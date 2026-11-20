@@ -1,5 +1,5 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
-export type DecoderId = "none" | "wfm" | "wwv" | "am" | "armer";
+export type DecoderId = "none" | "wfm" | "wwv" | "am" | "armer" | "nfm";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -44,6 +44,18 @@ export const decoders: DecoderManifest[] = [
     },
     outputs: ["audio"],
     bandwidths: [6000, 8000, 10000, 12000, 16000],
+  },
+  {
+    id: "nfm",
+    name: "NFM · narrowband FM",
+    description: "Analog FM voice · squelch · CTCSS / DCS",
+    requirements: {
+      minSampleRate: 24000,
+      bandwidthHz: 12500,
+      inputSampleRate: 2400000,
+    },
+    outputs: ["audio", "telemetry", "message"],
+    bandwidths: [10000, 12500, 15000, 20000, 25000],
   },
   {
     id: "armer",

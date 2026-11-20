@@ -13,6 +13,7 @@
     "test:browser": "node scripts/browser-check.mjs",
     "test:browser:wwv": "node scripts/browser-wwv-check.mjs",
     "test:browser:am": "node scripts/browser-am-check.mjs",
+    "test:browser:nfm": "node scripts/browser-nfm-check.mjs",
     "test:browser:armer": "node scripts/browser-armer-check.mjs",
     "test:fieldglass": "node scripts/compare-fieldglass.mjs",
     "test:usb": "node scripts/browser-usb-check.mjs",

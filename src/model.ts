@@ -2,6 +2,7 @@ export const SAMPLE_RATE = 2_400_000;
 export const AUDIO_RATE = 48_000;
 export const FFT_SIZE = 8192;
 import { decoders, type DecoderId } from "./decoders";
+import { validateTone, type ToneFilter } from "./presets/tones";
 export { decoders, type DecoderId } from "./decoders";
 export interface Settings {
   center: number;
@@ -13,6 +14,9 @@ export interface Settings {
   stereo: boolean;
   gain: number | null;
   ppm: number;
+  squelch: number | null;
+  nfmDeviation: number;
+  tone: ToneFilter | null;
 }
 export const defaults: Settings = {
   center: 100_000_000,
@@ -24,6 +28,9 @@ export const defaults: Settings = {
   stereo: true,
   gain: 25.4,
   ppm: 0,
+  squelch: -65,
+  nfmDeviation: 2500,
+  tone: null,
 };
 export function validateSettings(s: Settings): void {
   if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)
@@ -64,6 +71,14 @@ export function validateSettings(s: Settings): void {
     throw Error("Choose 50 µs, 75 µs, or no de-emphasis.");
   if (typeof s.stereo !== "boolean")
     throw Error("Choose Auto stereo or Mono audio.");
+  if (
+    s.squelch !== null &&
+    (!Number.isFinite(s.squelch) || s.squelch < -100 || s.squelch > -20)
+  )
+    throw Error("Choose squelch Off or a threshold from −100 to −20 dBFS.");
+  if (![2500, 5000, 7500].includes(s.nfmDeviation))
+    throw Error("Choose a supported FM deviation.");
+  validateTone(s.tone);
   if (!decoders.some((d) => d.id === s.decoder))
     throw Error("Unknown decoder.");
 }

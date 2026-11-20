@@ -7,6 +7,7 @@ import {
 import type { Settings } from "../model";
 import type { DecoderEvent, WwvStatus } from "../types";
 import { ControlQualityWindow } from "../armer/quality";
+import { nfmPlugin } from "./nfm-plugin";
 import {
   policyBitmap,
   type ArmerPolicy,
@@ -21,11 +22,15 @@ export interface DecoderPlugin {
   process(iq: Uint8Array, firstSample: number): DecoderEvent[];
   dispose(): void;
   setPolicy?(policy: ArmerPolicy): void;
+  setHold?(id: string | null): void;
 }
 export const factories: Record<
   Exclude<Settings["decoder"], "none">,
   (s: Settings, policy?: ArmerPolicy) => DecoderPlugin
 > = {
+  nfm(s) {
+    return nfmPlugin(s);
+  },
   armer(s, policy = { defaultListen: true, rules: [] }) {
     const native = new Receiver(s.center, s.channel, 2400000);
     const quality = new ControlQualityWindow();

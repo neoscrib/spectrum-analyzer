@@ -39,3 +39,9 @@ libm 0.2.16 — MIT
 MIT texts selected and included by package/version. sdr-p25 provenance included.
 @xmldom/xmldom 0.9.12 — MIT (local server SOAP parsing only).
 SDRTrunk source was used to verify playlist interchange; its code is not bundled.
+
+The NFM demodulator, carrier/noise squelch, CTCSS detector and DCS detector
+are original Rust implementations. Signalling parameters and independent DCS
+word test vectors follow ETSI TS 103 236 V1.1.1 (2014-01); no third-party
+CTCSS/DCS implementation code is bundled. Frequency banks cite FCC, NWS, ARRL
+and USCG channel references in the UI and README.

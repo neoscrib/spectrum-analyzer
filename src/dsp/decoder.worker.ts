@@ -7,6 +7,9 @@ import { factories, type DecoderPlugin } from "./plugins";
 import { WwvTestSignal } from "./wwv-synthetic";
 import { AmTestSignal } from "./am-synthetic";
 import type { ArmerPolicy } from "../armer/model";
+import { nfmPlugin } from "./nfm-plugin";
+import { NfmTestSignal } from "./nfm-synthetic";
+import type { NfmMonitorConfig } from "../presets/model";
 
 let settings: Settings;
 let decoder: DecoderPlugin | undefined;
@@ -15,6 +18,7 @@ let source = new TestSignal();
 let wwvSource = new WwvTestSignal();
 let amSource = new AmTestSignal();
 let armerSource: ArmerTestSource | undefined;
+let nfmSource = new NfmTestSignal();
 let armerPolicy: ArmerPolicy = { defaultListen: true, rules: [] };
 let revision = 0;
 let lastSpectrum = -Infinity;
@@ -22,11 +26,19 @@ let loading = Promise.resolve();
 function send(message: WorkerOut, transfer: Transferable[] = []) {
   postMessage(message, transfer);
 }
-function configure(s: Settings, nextRevision: number) {
+function configure(
+  s: Settings,
+  nextRevision: number,
+  monitor: NfmMonitorConfig | null = null,
+) {
   validateSettings(s);
   decoder?.dispose();
   decoder =
-    s.decoder === "none" ? undefined : factories[s.decoder](s, armerPolicy);
+    s.decoder === "none"
+      ? undefined
+      : s.decoder === "nfm"
+        ? nfmPlugin(s, monitor)
+        : factories[s.decoder](s, armerPolicy);
   samplesProcessed = 0;
   settings = s;
   revision = nextRevision;
@@ -75,11 +87,16 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
           source = new TestSignal();
           wwvSource = new WwvTestSignal();
           amSource = new AmTestSignal();
-          configure(data.settings, data.revision);
+          nfmSource = new NfmTestSignal();
+          configure(data.settings, data.revision, data.monitor);
           send({ type: "ready" });
           break;
         case "configure":
-          configure(data.settings, data.revision);
+          configure(data.settings, data.revision, data.monitor);
+          break;
+        case "nfm-hold":
+          decoder?.setHold?.(data.id);
+          revision = data.revision;
           break;
         case "armer-policy":
           armerPolicy = data.policy;
@@ -92,16 +109,18 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "test":
           if (data.revision === revision)
             process(
-              settings.decoder === "wwv"
-                ? wwvSource.process(settings.center)
-                : settings.decoder === "armer"
-                  ? (armerSource ??= new ArmerTestSource()).process(
-                      settings.center,
-                      65536,
-                    )
-                  : settings.decoder === "am"
-                    ? amSource.process(settings.center)
-                    : source.process(settings.center),
+              settings.decoder === "nfm"
+                ? nfmSource.process(settings.center)
+                : settings.decoder === "wwv"
+                  ? wwvSource.process(settings.center)
+                  : settings.decoder === "armer"
+                    ? (armerSource ??= new ArmerTestSource()).process(
+                        settings.center,
+                        65536,
+                      )
+                    : settings.decoder === "am"
+                      ? amSource.process(settings.center)
+                      : source.process(settings.center),
             );
           break;
         case "close":

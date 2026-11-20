@@ -5,6 +5,7 @@ import {
 import { SAMPLE_RATE, validateSettings, type Settings } from "./model";
 import type { Frame, WorkerIn, WorkerOut } from "./types";
 import type { ArmerPolicy } from "./armer/model";
+import type { NfmMonitorConfig } from "./presets/model";
 
 export function usbError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -22,6 +23,7 @@ export function usbError(error: unknown): string {
 
 type Command = {
   settings: Settings;
+  monitor: NfmMonitorConfig | null;
   resolve: () => void;
   reject: (e: Error) => void;
 };
@@ -55,7 +57,14 @@ export class RadioSession {
     }
   }
 
-  private async init(settings: Settings) {
+  setNfmHold(id: string | null) {
+    if (this.worker && this.settings?.decoder === "nfm")
+      this.post({ type: "nfm-hold", id, revision: ++this.revision });
+  }
+  private async init(
+    settings: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ) {
     this.settings = settings;
     this.worker = new Worker(
       new URL("./dsp/decoder.worker.ts", import.meta.url),
@@ -100,6 +109,7 @@ export class RadioSession {
       settings,
       revision: ++this.revision,
       armerPolicy: this.armerPolicy,
+      monitor,
     });
     try {
       await ready;
@@ -112,7 +122,10 @@ export class RadioSession {
     this.worker?.postMessage(message, transfer);
   }
 
-  async connect(settings: Settings): Promise<void> {
+  async connect(
+    settings: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ): Promise<void> {
     validateSettings(settings);
     if (this.running || this.worker || this.device || this.stopping)
       throw Error("Stop the current source before connecting.");
@@ -129,7 +142,7 @@ export class RadioSession {
     const opening = this.provider.get();
     try {
       this.device = await opening;
-      await this.init(settings);
+      await this.init(settings, monitor);
       const rate = await this.device.setSampleRate(SAMPLE_RATE);
       if (rate !== SAMPLE_RATE)
         throw Error(
@@ -149,12 +162,15 @@ export class RadioSession {
       throw Error(usbError(error));
     }
   }
-  async test(settings: Settings): Promise<void> {
+  async test(
+    settings: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ): Promise<void> {
     validateSettings(settings);
     if (this.running || this.worker || this.stopping)
       throw Error("Stop the current source first.");
     try {
-      await this.init(settings);
+      await this.init(settings, monitor);
       this.source = "test";
       this.running = true;
       let target = performance.now();
@@ -210,7 +226,7 @@ export class RadioSession {
               await device.setCenterFrequency(s.center);
             if (s.gain !== this.settings?.gain) await device.setGain(s.gain);
             await device.resetBuffer();
-            this.configure(s);
+            this.configure(s, command.monitor);
             command.resolve();
           } catch (e) {
             command.reject(e instanceof Error ? e : Error(String(e)));
@@ -236,20 +252,31 @@ export class RadioSession {
       await Promise.all(pending);
     }
   }
-  private configure(settings: Settings) {
+  private configure(
+    settings: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ) {
     this.queue = [];
     this.settings = settings;
-    this.post({ type: "configure", settings, revision: ++this.revision });
+    this.post({
+      type: "configure",
+      settings,
+      revision: ++this.revision,
+      monitor,
+    });
   }
-  async update(settings: Settings): Promise<void> {
+  async update(
+    settings: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ): Promise<void> {
     validateSettings(settings);
     if (!this.running) throw Error("Start a source before adjusting it.");
     if (this.source === "test") {
-      this.configure(settings);
+      this.configure(settings, monitor);
       return;
     }
     return new Promise<void>((resolve, reject) =>
-      this.commands.push({ settings, resolve, reject }),
+      this.commands.push({ settings, monitor, resolve, reject }),
     );
   }
   private enqueue(data: ArrayBuffer) {

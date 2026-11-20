@@ -1,13 +1,13 @@
 # Spectrum
 
-A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and Rust/WebAssembly WFM stereo, AM, WWV time-code, and ARMER P25 Phase I decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup is an optional network service.
+A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and Rust/WebAssembly WFM stereo, NFM, AM, WWV time-code, and ARMER P25 Phase I decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup is an optional network service.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. The development and preview servers bind to loopback. Port 5176 avoids the reference apps. Generated WASM is included; normal use requires Node/npm, not Rust.
+Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. The development and preview servers bind to loopback. Port 5176 avoids the reference apps. Generated WASM is included; normal use requires Node/npm, not Rust. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
 
 ## Receive and decode
 
@@ -32,6 +32,28 @@ Select **Decode as… → AM · amplitude modulation**, tune the desired channel
 The current tuner path remains 24–1766 MHz; selecting AM does not add lower-frequency reception. **Try AM test signal** generates a 1 kHz AM station at **120.100 MHz**, with a neighboring 3 kHz AM station at **120.140 MHz**, captured around 120.000 MHz. This is explicitly labeled synthetic data and uses the actual WASM and AudioWorklet. Select the neighboring carrier to hear its different tone.
 
 `wasm/src/am.rs` supplies a shared AM channelizer/envelope detector. Standalone `AmDecoder` emits only audio; `WwvDecoder` uses the identical demodulator and additionally feeds its 100 Hz protocol decoder. Rust tests verify both tuning-offset signs, adjacent-channel rejection, channel-width filtering, mono output, and arbitrary IQ chunk boundaries. Browser tests measure rendered audio, select the neighboring station, retune across the center, and check volume/pause/stop and responsive layout.
+
+## NFM, frequency presets, and scanning
+
+Use **Frequency banks → FRS / GMRS → Channel 1 → Tune**, then **Connect RTL-SDR** and **Play audio**. Channel names are also clickable, including on narrow screens. Or choose **Decode as… → NFM** and enter any supported frequency directly. **Channel width** is configurable at 10/12.5/15/20/25 kHz; **FM deviation** independently selects ±2.5/5/7.5 kHz for audio scaling. Shared FRS/GMRS presets start at 12.5 kHz and ±2.5 kHz. Widen the filter/deviation when needed for a wider analog FM transmission. Output is mono, duplicated to both speakers at 48 kHz, with a fourth-order 300 Hz high-pass, 3.2 kHz low-pass, and 750 µs de-emphasis.
+
+**Squelch** combines a configurable relative channel-power threshold with an out-of-voice-band FM noise detector, 3 dB level hysteresis, a 20 ms opening qualification, and approximately 250 ms hang time. The default threshold is −65 dBFS. It is not calibrated dBm; adjust for your receiver's noise level/gain. **Off** opens the audio monitor, including noise. Code detection receives the un-deemphasized discriminator before voice filtering. Proper anti-alias filters at 24 kHz → 4.8 kHz → 1.2 kHz prevent voice tones aliasing into signalling frequencies.
+
+**Code filter → Any code** detects signalling without restricting playback. An optional CTCSS/DCS filter unmutes only a confirmed match. The implementation recognizes 50 common CTCSS frequencies and the 83 DCS codes in [ETSI TS 103 236](https://www.etsi.org/deliver/etsi_ts/103200_103299/103236/01.01.01_60/ts_103236v010101p.pdf), in both polarities. DCS uses repeated 23-bit Golay words at 134.4 bit/s; detection requires four successive matching words, allowing at most one differing bit per word. Some code/polarity pairs represent the same cyclic waveform, so equivalents appear together (for example **023N / 047I**). This does not infer a radio manufacturer's proprietary “privacy code” numbering. Codes are not encryption. Allow roughly 1–2 seconds for stable detection; very brief or weak calls may produce audio without an identified code.
+
+The reusable preset library includes:
+
+- **22 FRS/GMRS shared channels**, using the exact frequencies in [47 CFR 95.563](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-D/part-95/subpart-B/section-95.563).
+- **Seven NOAA weather frequencies**, named by frequency to avoid inconsistent WX numbering; see the [National Weather Service](https://www.weather.gov/abr/nwr).
+- **US amateur FM calling frequencies** from the [ARRL band plan](https://www.arrl.org/band-plan).
+- **A US marine simplex voice subset**, with the [US Coast Guard channel reference](https://navcen.uscg.gov/us-vhf-channel-information). This is not a complete marine/digital/repeater allocation table.
+- **My frequencies** and user-created banks. Save/edit names, exact frequencies, AM/NFM/WFM modulation, filter width, and NFM deviation/squelch/code filters. AM/WFM presets tune individually; parallel bank monitoring currently supports NFM.
+
+Click **Monitor / scan bank** to connect if needed or reuse the current source. All enabled NFM presets in the current 2.4 MHz capture run as independent WASM virtual receivers, up to **16 at once**. Only one active receiver is routed to playback, keeping the selected call until it closes. FRS/GMRS groups into **15 receivers around 462 MHz and seven around 467 MHz**. The tuner alternates windows after at least 0.75 seconds of quiet stream time, rather than retuning for each channel. Carrier activity holds the RF window, even while waiting for a code match. **Hold channel** pins the selected receiver/window after a call ends; **Resume scan** returns to automatic selection. **Next window** deliberately skips the current observation. Other RF windows cannot be monitored simultaneously with this one dongle. Display zoom does not change any virtual receiver, and gain/PPM changes retain the active bank configuration.
+
+Banks and per-preset settings persist locally. Export/import the versioned JSON library to back them up; imports replace the library after validation. Libraries are bounded to 50 banks / 2,000 total presets / 200 presets per bank and 1 MB per imported file. A bank reset restores that bank's supplied channels. Activity history records all detected carrier openings in the observed window, even when another channel is playing, with observed duration, peak level, and detected code. It retains up to 300 observations (the latest 60 are shown) and exports CSV. Stop/retune marks interrupted observations; it does not claim an unobserved transmission ended. Live observations persist; generated test observations are labelled and excluded from saved RF history.
+
+**Try NFM test signal** generates scheduled CU8 transmissions, with overlapping channels: CH 1 has a 1 kHz voice test tone plus 100 Hz CTCSS, CH 2 a 1.5 kHz tone plus DCS 023N, and CH 8 a 2 kHz tone plus 88.5 Hz CTCSS in the other RF window. The 12-second sequence repeats. Run bank monitoring against that source to exercise scanning and parallel activity detection without accessing USB. Tests verify audible tones through the actual WASM/AudioWorklet, subaudible-tone suppression, CTCSS/DCS identification, squelch release, two-window scanning, hold/resume, one audio stream, independent activity history, custom-bank persistence, JSON/CSV export/import, and responsive layouts. Native tests additionally reject noise and voice-only false codes, preserve arbitrary chunk boundaries, and cover positive/negative tuning offsets. **Live over-the-air NFM reception has not yet been verified.**
 
 ## ARMER / P25 Phase I
 
@@ -99,6 +121,7 @@ npm run check            # All three above
 npm run test:browser     # WFM regression; dev or preview server must be running
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
+npm run test:browser:nfm # NFM audio/codes, parallel monitoring, scanning, history, banks
 npm run test:browser:armer # P25 IQ/audio, talkgroup policies, aliases and XML interchange
 npm run test:fieldglass    # Exact parity with the actual ../armer/web WASM module
 ```

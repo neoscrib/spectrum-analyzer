@@ -9,6 +9,7 @@ vi.mock("@jtarrio/webrtlsdr/rtlsdr.js", () => ({
   },
 }));
 import { RadioSession } from "./radio";
+import { starterLibrary, captureWindows } from "./presets/model";
 
 let device: ReturnType<typeof makeDevice>;
 let reads: {
@@ -162,6 +163,42 @@ it("serializes tuning and gain writes between fully drained USB read pairs", asy
   expect(
     workers[0].messages.some((m) => m.type === "configure" && m.revision === 2),
   ).toBe(true);
+  await stop(session);
+});
+it("updates the RF center and all NFM virtual receivers in one worker configuration", async () => {
+  const windows = captureWindows(starterLibrary().banks[0]);
+  const config = (index: number) => ({
+    bankId: "frs-gmrs",
+    windowKey: windows[index].key,
+    presets: windows[index].presets,
+    holdId: null,
+  });
+  const settings = {
+    ...defaults,
+    decoder: "nfm" as const,
+    center: windows[0].center,
+    channel: windows[0].presets[0].frequency,
+    bandwidth: 12500,
+  };
+  const session = new RadioSession();
+  await session.connect(settings, config(0));
+  expect(workers[0].messages[0]).toMatchObject({
+    type: "init",
+    monitor: config(0),
+  });
+  const updating = session.update(
+    {
+      ...settings,
+      center: windows[1].center,
+      channel: windows[1].presets[0].frequency,
+    },
+    config(1),
+  );
+  await pair();
+  await updating;
+  expect(workers[0].messages.find((m) => m.type === "configure")).toMatchObject(
+    { settings: { center: windows[1].center }, monitor: config(1) },
+  );
   await stop(session);
 });
 

@@ -21,6 +21,16 @@ import { BrowserAudio } from "./audio";
 import { Spectrum } from "./components/Spectrum";
 import { WwvPanel } from "./components/WwvPanel";
 import { ArmerPanel } from "./components/ArmerPanel";
+import { PresetPanel } from "./components/PresetPanel";
+import { NfmPanel } from "./components/NfmPanel";
+import { SquelchSelect, ToneSelect } from "./components/ToneSelect";
+import {
+  presetSettings,
+  type NfmFeed,
+  type NfmTelemetry,
+  type NfmActivity,
+  type NfmMonitorConfig,
+} from "./presets/model";
 import {
   loadArmerConfig,
   type ArmerFeed,
@@ -78,6 +88,13 @@ export default function App() {
     events: [],
   });
   const [armerGeneration, setArmerGeneration] = useState(0);
+  const [nfmFeed, setNfmFeed] = useState<NfmFeed>({ status: null, events: [] });
+  const nfmStatus = useRef<NfmTelemetry | null>(null),
+    nfmPending = useRef<NfmActivity[]>([]);
+  const [appliedMonitor, setAppliedMonitor] = useState<NfmMonitorConfig | null>(
+    null,
+  );
+  const [nfmTest, setNfmTest] = useState(false);
   const [armerTest, setArmerTest] = useState(false);
   const armerPending = useRef<P25Event[]>([]);
   const armerStatus = useRef<ArmerStatus | null>(null);
@@ -127,6 +144,8 @@ export default function App() {
       if (frame.spectrum) fft.current = frame.spectrum;
       let stereo = false;
       for (const event of frame.events) {
+        if (event.type === "selection" && event.protocol === "nfm")
+          player.clear();
         if (
           event.type === "audio" &&
           !(
@@ -143,6 +162,10 @@ export default function App() {
           armerPending.current.push(event.event);
         if (event.type === "telemetry" && event.protocol === "armer")
           armerStatus.current = event.status;
+        if (event.type === "telemetry" && event.protocol === "nfm")
+          nfmStatus.current = event.status;
+        if (event.type === "activity" && event.protocol === "nfm")
+          nfmPending.current.push(event.event);
       }
       samples += frame.samples;
       if (performance.now() - last > 180) {
@@ -160,6 +183,11 @@ export default function App() {
             status: armerStatus.current,
             events: armerPending.current.splice(0),
           });
+        if (nfmStatus.current)
+          setNfmFeed({
+            status: nfmStatus.current,
+            events: nfmPending.current.splice(0),
+          });
         last = performance.now();
       }
     };
@@ -169,6 +197,7 @@ export default function App() {
       setError(message);
       void session.stop().finally(() => {
         setSource("idle");
+        setAppliedMonitor(null);
         setBusy(false);
       });
     };
@@ -205,13 +234,16 @@ export default function App() {
     setChannelInput(mhz(settings.channel));
   }, [settings.center, settings.channel]);
 
-  async function apply(next: Settings) {
-    if (busy) return;
+  async function apply(
+    next: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ): Promise<boolean> {
+    if (busy) return false;
     try {
       validateSettings(next);
       setError("");
       setBusy(true);
-      if (active) await radio.current!.update(next);
+      if (active) await radio.current!.update(next, monitor);
       audio.current!.clear();
       setMetrics((m) => ({ ...m, stereo: false }));
       setWwv(null);
@@ -222,6 +254,11 @@ export default function App() {
       setArmerFeed({ status: null, events: [] });
       setArmerGeneration((n) => n + 1);
       setArmerTest(source === "test");
+      nfmPending.current = [];
+      nfmStatus.current = null;
+      setNfmFeed({ status: null, events: [] });
+      setAppliedMonitor(monitor);
+      setNfmTest(source === "test");
       radio.current!.setTestSpeed(next.decoder === "wwv" ? testSpeed : 1);
       if (
         next.decoder === "none" ||
@@ -232,14 +269,20 @@ export default function App() {
       }
       if (next.center !== settingsRef.current.center) fft.current = null;
       setSettings(next);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }
   }
-  async function start(kind: "live" | "test") {
-    if (busy) return;
+  async function start(
+    kind: "live" | "test",
+    override?: Settings,
+    monitor: NfmMonitorConfig | null = null,
+  ): Promise<boolean> {
+    if (busy) return false;
     setError("");
     setBusy(true);
     setFrozen(false);
@@ -253,46 +296,58 @@ export default function App() {
     setArmerFeed({ status: null, events: [] });
     setArmerGeneration((n) => n + 1);
     setArmerTest(kind === "test");
+    nfmPending.current = [];
+    nfmStatus.current = null;
+    setNfmFeed({ status: null, events: [] });
+    setNfmTest(kind === "test");
     // A known source starts with known tuning; receiver settings remain otherwise intact.
     const current =
-      kind === "live"
+      override ??
+      (kind === "live"
         ? {
             ...settingsRef.current,
             gain: rfDraft.auto ? null : rfDraft.gain,
             ppm: Number(rfDraft.ppm),
           }
-        : settingsRef.current;
+        : settingsRef.current);
     const testProfile =
-      current.decoder === "armer"
+      current.decoder === "nfm"
         ? {
-            center: 852400000,
-            channel: 853075000,
-            span: SAMPLE_RATE,
-            decoder: "armer" as const,
+            center: 462400000,
+            channel: 462562500,
+            span: 600000,
+            decoder: "nfm" as const,
           }
-        : current.decoder === "wwv"
+        : current.decoder === "armer"
           ? {
-              center: 25050000,
-              channel: 25000000,
-              span: 150000,
-              decoder: "wwv" as const,
+              center: 852400000,
+              channel: 853075000,
+              span: SAMPLE_RATE,
+              decoder: "armer" as const,
             }
-          : current.decoder === "am"
+          : current.decoder === "wwv"
             ? {
-                center: 120000000,
-                channel: 120100000,
-                span: 300000,
-                decoder: "am" as const,
+                center: 25050000,
+                channel: 25000000,
+                span: 150000,
+                decoder: "wwv" as const,
               }
-            : {
-                center: defaults.center,
-                channel: defaults.channel,
-                span: current.span,
-                decoder: "wfm" as const,
-              };
+            : current.decoder === "am"
+              ? {
+                  center: 120000000,
+                  channel: 120100000,
+                  span: 300000,
+                  decoder: "am" as const,
+                }
+              : {
+                  center: defaults.center,
+                  channel: defaults.channel,
+                  span: current.span,
+                  decoder: "wfm" as const,
+                };
     const testManifest = decoders.find((d) => d.id === testProfile.decoder)!;
     const s =
-      kind === "test"
+      kind === "test" && !override
         ? {
             ...current,
             ...testProfile,
@@ -305,14 +360,17 @@ export default function App() {
       // connect() invokes the USB chooser before its first await.
       const starting =
         kind === "live"
-          ? radio.current!.connect(s)
+          ? radio.current!.connect(s, monitor)
           : (radio.current!.setTestSpeed(s.decoder === "wwv" ? testSpeed : 1),
-            radio.current!.test(s));
+            radio.current!.test(s, monitor));
       await starting;
       setSettings(s);
       setSource(kind);
+      setAppliedMonitor(monitor);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -323,6 +381,7 @@ export default function App() {
     setPlaying(false);
     await radio.current!.stop();
     setSource("idle");
+    setAppliedMonitor(null);
     setBusy(false);
   }
   async function toggleAudio() {
@@ -351,6 +410,16 @@ export default function App() {
   const selectChannel = (channel: number) => {
     if (!busy) void apply({ ...settingsRef.current, channel });
   };
+  const monitoredPreset = appliedMonitor?.presets.find(
+    (p) => p.id === nfmFeed.status?.selectedId,
+  );
+  const displaySettings = monitoredPreset
+    ? {
+        ...settings,
+        channel: monitoredPreset.frequency,
+        bandwidth: monitoredPreset.bandwidth,
+      }
+    : settings;
 
   return (
     <div className="app-shell">
@@ -519,7 +588,7 @@ export default function App() {
             </div>
             <Spectrum
               data={fft}
-              settings={settings}
+              settings={displaySettings}
               source={source}
               floor={floor}
               frozen={frozen}
@@ -537,11 +606,13 @@ export default function App() {
                     ? source === "test"
                       ? settings.decoder === "wwv"
                         ? `Synthetic WWV IQ · ${testSpeed}×`
-                        : settings.decoder === "armer"
-                          ? "Generated P25 IQ · test vocoder data"
-                          : settings.decoder === "am"
-                            ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
-                            : "Synthetic IQ · L 1 kHz / R 2 kHz"
+                        : settings.decoder === "nfm"
+                          ? "Generated NFM IQ · scheduled FRS test calls"
+                          : settings.decoder === "armer"
+                            ? "Generated P25 IQ · test vocoder data"
+                            : settings.decoder === "am"
+                              ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
+                              : "Synthetic IQ · L 1 kHz / R 2 kHz"
                       : "Live IQ stream"
                     : metrics.samples
                       ? "Stopped · last received spectrum"
@@ -583,6 +654,13 @@ export default function App() {
                 active={active}
                 test={wwvOrigin === "test"}
                 testSpeed={testSpeed}
+              />
+            )}
+            {settings.decoder === "nfm" && (
+              <NfmPanel
+                status={nfmFeed.status}
+                active={active}
+                test={nfmTest}
               />
             )}
             {settings.decoder === "armer" && (
@@ -658,13 +736,15 @@ export default function App() {
                     onClick={() => void start("test")}
                   >
                     <FlaskConical size={15} />{" "}
-                    {settings.decoder === "armer"
-                      ? "Try ARMER test signal"
-                      : settings.decoder === "wwv"
-                        ? "Try WWV test signal"
-                        : settings.decoder === "am"
-                          ? "Try AM test signal"
-                          : "Try FM test signal"}
+                    {settings.decoder === "nfm"
+                      ? "Try NFM test signal"
+                      : settings.decoder === "armer"
+                        ? "Try ARMER test signal"
+                        : settings.decoder === "wwv"
+                          ? "Try WWV test signal"
+                          : settings.decoder === "am"
+                            ? "Try AM test signal"
+                            : "Try FM test signal"}
                   </button>
                 </>
               )}
@@ -743,20 +823,33 @@ export default function App() {
                   }}
                 >
                   <label className="field-label" htmlFor="channel">
-                    {settings.decoder === "armer"
-                      ? "Control frequency"
-                      : "Decoder frequency"}
+                    {appliedMonitor
+                      ? monitoredPreset
+                        ? "Selected audio frequency"
+                        : "Bank reference frequency"
+                      : settings.decoder === "armer"
+                        ? "Control frequency"
+                        : "Decoder frequency"}
                   </label>
                   <div className="channel-input">
                     <input
                       id="channel"
                       type="number"
                       step="0.0001"
-                      value={channelInput}
+                      value={
+                        appliedMonitor
+                          ? mhz(displaySettings.channel)
+                          : channelInput
+                      }
+                      readOnly={!!appliedMonitor}
                       onChange={(e) => setChannelInput(e.target.value)}
                     />
                     <span>MHz</span>
-                    <button type="submit" aria-label="Tune decoder">
+                    <button
+                      type="submit"
+                      aria-label="Tune decoder"
+                      disabled={!!appliedMonitor}
+                    >
                       Set
                     </button>
                   </div>
@@ -769,7 +862,8 @@ export default function App() {
                     <div className="select-wrap full">
                       <select
                         id="bandwidth"
-                        value={settings.bandwidth}
+                        disabled={!!appliedMonitor}
+                        value={displaySettings.bandwidth}
                         onChange={(e) =>
                           void apply({
                             ...settings,
@@ -839,6 +933,55 @@ export default function App() {
                       </select>
                       <ChevronDown size={13} />
                     </div>
+                  </div>
+                )}
+                {settings.decoder === "nfm" && (
+                  <div className="nfm-controls">
+                    <SquelchSelect
+                      value={
+                        monitoredPreset
+                          ? monitoredPreset.squelch
+                          : settings.squelch
+                      }
+                      onChange={(squelch) =>
+                        void apply({ ...settings, squelch })
+                      }
+                      disabled={busy || !!appliedMonitor}
+                    />
+                    <label className="preset-field">
+                      FM deviation
+                      <select
+                        aria-label="FM deviation"
+                        value={
+                          monitoredPreset?.deviation ?? settings.nfmDeviation
+                        }
+                        disabled={busy || !!appliedMonitor}
+                        onChange={(e) =>
+                          void apply({
+                            ...settings,
+                            nfmDeviation: Number(e.target.value),
+                          })
+                        }
+                      >
+                        {[2500, 5000, 7500].map((v) => (
+                          <option key={v} value={v}>
+                            ±{v / 1000} kHz
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <ToneSelect
+                      value={
+                        monitoredPreset ? monitoredPreset.tone : settings.tone
+                      }
+                      onChange={(tone) => void apply({ ...settings, tone })}
+                      disabled={busy || !!appliedMonitor}
+                    />
+                    <p className="caption">
+                      {appliedMonitor
+                        ? "Edit per-channel settings in the preset bank below."
+                        : "300–3,200 Hz voice audio · 750 µs de-emphasis. Codes are detected even with Any code selected."}
+                    </p>
                   </div>
                 )}
                 {settings.decoder === "wwv" && (
@@ -953,17 +1096,19 @@ export default function App() {
                   <strong>
                     {!active || settings.decoder === "none"
                       ? "—"
-                      : settings.decoder === "armer"
-                        ? "Mono · P25 IMBE"
-                        : settings.decoder === "wwv"
-                          ? "Mono · AM voice + time code"
-                          : settings.decoder === "am"
-                            ? "Mono · AM envelope"
-                            : !settings.stereo
-                              ? "Mono · forced"
-                              : metrics.stereo
-                                ? "Stereo · pilot locked"
-                                : "Mono · awaiting stereo pilot"}
+                      : settings.decoder === "nfm"
+                        ? "Mono · narrowband FM"
+                        : settings.decoder === "armer"
+                          ? "Mono · P25 IMBE"
+                          : settings.decoder === "wwv"
+                            ? "Mono · AM voice + time code"
+                            : settings.decoder === "am"
+                              ? "Mono · AM envelope"
+                              : !settings.stereo
+                                ? "Mono · forced"
+                                : metrics.stereo
+                                  ? "Stereo · pilot locked"
+                                  : "Mono · awaiting stereo pilot"}
                   </strong>
                 </div>
                 <button
@@ -1087,11 +1232,14 @@ export default function App() {
                 className="button rf-apply"
                 disabled={busy || !rfPending}
                 onClick={() =>
-                  void apply({
-                    ...settings,
-                    gain: rfDraft.auto ? null : rfDraft.gain,
-                    ppm: Number(rfDraft.ppm),
-                  })
+                  void apply(
+                    {
+                      ...settings,
+                      gain: rfDraft.auto ? null : rfDraft.gain,
+                      ppm: Number(rfDraft.ppm),
+                    },
+                    appliedMonitor,
+                  )
                 }
               >
                 Apply RF settings
@@ -1111,6 +1259,51 @@ export default function App() {
               </p>
             </section>
           </aside>
+
+          <PresetPanel
+            settings={settings}
+            source={source}
+            busy={busy}
+            feed={nfmFeed}
+            generation={armerGeneration}
+            applied={appliedMonitor}
+            onTune={(p) => apply(presetSettings(p, settingsRef.current))}
+            onMonitor={(monitor, center) => {
+              const p = monitor.presets[0];
+              const next = {
+                ...presetSettings(p, settingsRef.current),
+                center,
+                span: SAMPLE_RATE,
+              };
+              return active
+                ? apply(next, monitor)
+                : start(
+                    "live",
+                    {
+                      ...next,
+                      gain: rfDraft.auto ? null : rfDraft.gain,
+                      ppm: Number(rfDraft.ppm),
+                    },
+                    monitor,
+                  );
+            }}
+            onStopMonitor={() => {
+              const selected =
+                appliedMonitor?.presets.find(
+                  (p) => p.id === nfmFeed.status?.selectedId,
+                ) ?? appliedMonitor?.presets[0];
+              return apply(
+                selected
+                  ? presetSettings(selected, settingsRef.current)
+                  : settingsRef.current,
+              );
+            }}
+            onHold={(id) => {
+              radio.current!.setNfmHold(id);
+              audio.current!.clear();
+              setAppliedMonitor((c) => (c ? { ...c, holdId: id } : null));
+            }}
+          />
 
           <section
             className="signal-strip panel"

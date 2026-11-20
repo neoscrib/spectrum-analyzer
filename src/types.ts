@@ -1,5 +1,10 @@
 import type { Settings } from "./model";
 import type { ArmerPolicy, ArmerStatus, P25Event } from "./armer/model";
+import type {
+  NfmMonitorConfig,
+  NfmTelemetry,
+  NfmActivity,
+} from "./presets/model";
 export interface WwvTimecode {
   year: number;
   dayOfYear: number;
@@ -31,6 +36,9 @@ export interface WwvStatus {
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "telemetry"; protocol: "nfm"; status: NfmTelemetry }
+  | { type: "activity"; protocol: "nfm"; event: NfmActivity }
+  | { type: "selection"; protocol: "nfm"; id: string | null }
   | { type: "telemetry"; protocol: "armer"; status: ArmerStatus }
   | { type: "message"; protocol: "armer"; event: P25Event }
   | {
@@ -54,9 +62,16 @@ export type WorkerIn =
       settings: Settings;
       revision: number;
       armerPolicy?: ArmerPolicy;
+      monitor?: NfmMonitorConfig | null;
     }
   | { type: "armer-policy"; policy: ArmerPolicy; revision: number }
-  | { type: "configure"; settings: Settings; revision: number }
+  | {
+      type: "configure";
+      settings: Settings;
+      revision: number;
+      monitor?: NfmMonitorConfig | null;
+    }
+  | { type: "nfm-hold"; id: string | null; revision: number }
   | { type: "iq"; data: ArrayBuffer; revision: number }
   | { type: "test"; revision: number }
   | { type: "close" };

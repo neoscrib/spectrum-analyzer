@@ -72,6 +72,60 @@ export class ArmerTestSource {
 }
 if (Symbol.dispose) ArmerTestSource.prototype[Symbol.dispose] = ArmerTestSource.prototype.free;
 
+export class NfmDecoder {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        NfmDecoderFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_nfmdecoder_free(ptr, 0);
+    }
+    /**
+     * @param {number} offset
+     * @param {number} bandwidth
+     * @param {number} deviation
+     * @param {number} squelch
+     */
+    constructor(offset, bandwidth, deviation, squelch) {
+        const ret = wasm.nfmdecoder_new(offset, bandwidth, deviation, squelch);
+        this.__wbg_ptr = ret;
+        NfmDecoderFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
+     * @param {Uint8Array | number[]} iq
+     * @returns {Float32Array}
+     */
+    process(iq) {
+        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.nfmdecoder_process(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v2;
+    }
+    /**
+     * @returns {string}
+     */
+    status() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.nfmdecoder_status(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) NfmDecoder.prototype[Symbol.dispose] = NfmDecoder.prototype.free;
+
 export class Receiver {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -325,6 +379,9 @@ const AmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
 const ArmerTestSourceFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_armertestsource_free(ptr, 1));
+const NfmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_nfmdecoder_free(ptr, 1));
 const ReceiverFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_receiver_free(ptr, 1));

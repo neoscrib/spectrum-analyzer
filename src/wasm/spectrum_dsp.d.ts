@@ -22,6 +22,17 @@ export class ArmerTestSource {
     process(center: number, count: number): Uint8Array;
 }
 
+export class NfmDecoder {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(offset: number, bandwidth: number, deviation: number, squelch: number);
+    /**
+     * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
+     */
+    process(iq: Uint8Array | number[]): Float32Array;
+    status(): string;
+}
+
 export class Receiver {
     free(): void;
     [Symbol.dispose](): void;
@@ -68,6 +79,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_amdecoder_free: (a: number, b: number) => void;
     readonly __wbg_armertestsource_free: (a: number, b: number) => void;
+    readonly __wbg_nfmdecoder_free: (a: number, b: number) => void;
     readonly __wbg_receiver_free: (a: number, b: number) => void;
     readonly __wbg_wfmdecoder_free: (a: number, b: number) => void;
     readonly __wbg_wwvdecoder_free: (a: number, b: number) => void;
@@ -75,6 +87,9 @@ export interface InitOutput {
     readonly amdecoder_process: (a: number, b: number, c: number) => [number, number];
     readonly armertestsource_new: () => number;
     readonly armertestsource_process: (a: number, b: number, c: number) => [number, number];
+    readonly nfmdecoder_new: (a: number, b: number, c: number, d: number) => number;
+    readonly nfmdecoder_process: (a: number, b: number, c: number) => [number, number];
+    readonly nfmdecoder_status: (a: number) => [number, number];
     readonly receiver_audio_talkgroup: (a: number) => number;
     readonly receiver_new: (a: number, b: number, c: number) => [number, number, number];
     readonly receiver_process: (a: number, b: number, c: number) => void;

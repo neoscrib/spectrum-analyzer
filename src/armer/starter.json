@@ -1,0 +1,92 @@
+[
+  {
+    "id": 6620,
+    "name": "Kanabec Sheriff Dispatch",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6640,
+    "name": "Kanabec Fire Dispatch",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6642,
+    "name": "Mora Area Fire Department",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6604,
+    "name": "Kanabec Interop Tac 3",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6606,
+    "name": "Kanabec Interop Tac 4",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6608,
+    "name": "Kanabec Interop Tac 5",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6600,
+    "name": "Kanabec Emergency",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6602,
+    "name": "Kanabec Roam",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6646,
+    "name": "Ogilvie Fire Department",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6670,
+    "name": "Kanabec EMS",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6672,
+    "name": "Kanabec Fire 6672",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 6674,
+    "name": "Kanabec Fire 6674",
+    "group": "Kanabec County",
+    "origin": "local"
+  },
+  {
+    "id": 43216,
+    "name": "Mille Lacs County Fire",
+    "group": "Neighboring agencies",
+    "origin": "local"
+  },
+  {
+    "id": 36594,
+    "name": "State Patrol \u00b7 Brainerd Dispatch",
+    "group": "Neighboring agencies",
+    "origin": "local"
+  },
+  {
+    "id": 7211,
+    "name": "Pine County Ambulance Main",
+    "group": "Neighboring agencies",
+    "origin": "local"
+  }
+]

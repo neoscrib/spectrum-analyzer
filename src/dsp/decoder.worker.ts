@@ -9,6 +9,7 @@ import { AmTestSignal } from "./am-synthetic";
 import type { ArmerPolicy } from "../armer/model";
 import { nfmPlugin } from "./nfm-plugin";
 import { NfmTestSignal } from "./nfm-synthetic";
+import { OokTestSignal } from "./ook-synthetic";
 import type { NfmMonitorConfig } from "../presets/model";
 
 let settings: Settings;
@@ -18,6 +19,7 @@ let source = new TestSignal();
 let wwvSource = new WwvTestSignal();
 let amSource = new AmTestSignal();
 let armerSource: ArmerTestSource | undefined;
+let ookSource = new OokTestSignal();
 let nfmSource = new NfmTestSignal();
 let armerPolicy: ArmerPolicy = { defaultListen: true, rules: [] };
 let revision = 0;
@@ -88,6 +90,7 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
           wwvSource = new WwvTestSignal();
           amSource = new AmTestSignal();
           nfmSource = new NfmTestSignal();
+          ookSource = new OokTestSignal();
           configure(data.settings, data.revision, data.monitor);
           send({ type: "ready" });
           break;
@@ -109,18 +112,20 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "test":
           if (data.revision === revision)
             process(
-              settings.decoder === "nfm"
-                ? nfmSource.process(settings.center)
-                : settings.decoder === "wwv"
-                  ? wwvSource.process(settings.center)
-                  : settings.decoder === "armer"
-                    ? (armerSource ??= new ArmerTestSource()).process(
-                        settings.center,
-                        65536,
-                      )
-                    : settings.decoder === "am"
-                      ? amSource.process(settings.center)
-                      : source.process(settings.center),
+              settings.decoder === "ook"
+                ? ookSource.process(settings.center)
+                : settings.decoder === "nfm"
+                  ? nfmSource.process(settings.center)
+                  : settings.decoder === "wwv"
+                    ? wwvSource.process(settings.center)
+                    : settings.decoder === "armer"
+                      ? (armerSource ??= new ArmerTestSource()).process(
+                          settings.center,
+                          65536,
+                        )
+                      : settings.decoder === "am"
+                        ? amSource.process(settings.center)
+                        : source.process(settings.center),
             );
           break;
         case "close":

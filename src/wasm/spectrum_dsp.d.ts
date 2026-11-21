@@ -33,6 +33,18 @@ export class NfmDecoder {
     status(): string;
 }
 
+export class OokDecoder {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(offset_hz: number, bandwidth_hz: number, threshold_db: number, min_pulse_us: number, gap_us: number);
+    /**
+     * CU8 at 2.4 MSPS -> complex channel filter -> 120 kSPS magnitude.
+     */
+    process(iq: Uint8Array | number[]): void;
+    status(): string;
+    take_bursts(): string;
+}
+
 export class Receiver {
     free(): void;
     [Symbol.dispose](): void;
@@ -80,6 +92,7 @@ export interface InitOutput {
     readonly __wbg_amdecoder_free: (a: number, b: number) => void;
     readonly __wbg_armertestsource_free: (a: number, b: number) => void;
     readonly __wbg_nfmdecoder_free: (a: number, b: number) => void;
+    readonly __wbg_ookdecoder_free: (a: number, b: number) => void;
     readonly __wbg_receiver_free: (a: number, b: number) => void;
     readonly __wbg_wfmdecoder_free: (a: number, b: number) => void;
     readonly __wbg_wwvdecoder_free: (a: number, b: number) => void;
@@ -90,6 +103,10 @@ export interface InitOutput {
     readonly nfmdecoder_new: (a: number, b: number, c: number, d: number) => number;
     readonly nfmdecoder_process: (a: number, b: number, c: number) => [number, number];
     readonly nfmdecoder_status: (a: number) => [number, number];
+    readonly ookdecoder_new: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly ookdecoder_process: (a: number, b: number, c: number) => void;
+    readonly ookdecoder_status: (a: number) => [number, number];
+    readonly ookdecoder_take_bursts: (a: number) => [number, number];
     readonly receiver_audio_talkgroup: (a: number) => number;
     readonly receiver_new: (a: number, b: number, c: number) => [number, number, number];
     readonly receiver_process: (a: number, b: number, c: number) => void;

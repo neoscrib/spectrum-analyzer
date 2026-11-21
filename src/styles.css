@@ -2145,3 +2145,205 @@ h1 {
     font-size: 11px;
   }
 }
+
+/* Binary amplitude keying and pulse inspection. */
+.ook-panel {
+  border-top: 1px solid var(--border);
+  padding: 24px;
+  min-width: 0;
+}
+.ook-panel > .caption {
+  margin: 10px 0 18px;
+}
+.ook-readings {
+  margin: 20px 0;
+}
+.ook-config {
+  border-block: 1px solid var(--border);
+  padding: 18px 0;
+}
+.ook-config fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.ook-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.ook-options label,
+.ook-capture-select {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ook-options select,
+.ook-options input[type="number"],
+.ook-capture-select select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: #141a21;
+  color: #dce4eb;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+}
+.ook-options .ook-invert {
+  flex-direction: row;
+  align-items: center;
+}
+.ook-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 22px 0 16px;
+}
+.ook-history-heading h3 {
+  font-size: 14px;
+  margin: 0;
+}
+.ook-history-heading h3 span {
+  font-weight: normal;
+  color: var(--muted);
+}
+.ook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ook-actions .button,
+.ook-config .button {
+  width: auto;
+  min-height: 34px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.ook-empty {
+  padding: 30px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ook-burst-meta {
+  margin: 20px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+}
+.ook-burst-meta span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ook-waveform {
+  color: var(--green);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px;
+  background: #141a21;
+}
+.ook-waveform svg {
+  display: block;
+  width: 100%;
+  height: 110px;
+}
+.ook-waveform text {
+  fill: var(--muted);
+  font-size: 13px;
+  font-family: "IBM Plex Mono", monospace;
+}
+.ook-baseline {
+  stroke: var(--border);
+}
+.ook-bits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 0;
+}
+.ook-bits > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ook-bits code {
+  font:
+    14px "IBM Plex Mono",
+    monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ook-panel details {
+  margin-top: 18px;
+  font-size: 12px;
+}
+.ook-panel summary {
+  cursor: pointer;
+  padding: 10px 0;
+}
+.ook-raw-scroll {
+  max-height: 240px;
+  overflow: auto;
+}
+.ook-raw {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font:
+    12px "IBM Plex Mono",
+    monospace;
+}
+.ook-raw th,
+.ook-raw td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+@media (max-width: 600px) {
+  .ook-panel {
+    padding: 18px 14px;
+  }
+  .ook-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ook-history-heading {
+    align-items: flex-start;
+  }
+}
+.ook-envelope {
+  margin: 14px 0 20px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--green);
+}
+.ook-envelope svg {
+  display: block;
+  width: 100%;
+  height: 100px;
+}
+.ook-envelope text {
+  fill: var(--muted);
+  font: 12px var(--mono);
+}
+.ook-threshold-line {
+  stroke: #f2c078;
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.ook-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font: 10px var(--mono);
+  padding: 2px 0 12px;
+}

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   binRange,
   clampChannel,
@@ -6,6 +6,7 @@ import {
   frequencyAt,
   moveCenter,
   SAMPLE_RATE,
+  readSettings,
   validateSettings,
 } from "./model";
 import { spectrum } from "./dsp/spectrum";
@@ -76,5 +77,25 @@ it("places both positive and negative complex tones at the correct physical freq
     expect(peak).toBe(size / 2 + bin);
     expect(fft[peak]).toBeGreaterThan(-6);
     expect(fft[size / 2]).toBeLessThan(-70);
+  }
+});
+
+it("preserves saved receiver settings from before the OOK decoder was added", () => {
+  const { ook: _, ...previous } = {
+    ...defaults,
+    decoder: "nfm",
+    bandwidth: 12500,
+    center: 462400000,
+    channel: 462562500,
+    gain: 22.9,
+  };
+  vi.stubGlobal("localStorage", { getItem: () => JSON.stringify(previous) });
+  try {
+    const saved = readSettings();
+    expect(saved).toMatchObject(previous);
+    expect(saved.ook).toEqual(defaults.ook);
+    expect(() => validateSettings(saved)).not.toThrow();
+  } finally {
+    vi.unstubAllGlobals();
   }
 });

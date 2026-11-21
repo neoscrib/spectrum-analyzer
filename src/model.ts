@@ -4,7 +4,9 @@ export const FFT_SIZE = 8192;
 import { decoders, type DecoderId } from "./decoders";
 import { validateTone, type ToneFilter } from "./presets/tones";
 export { decoders, type DecoderId } from "./decoders";
+import { ookDefaults, validateOok, type OokOptions } from "./ook/model";
 export interface Settings {
+  ook: OokOptions;
   center: number;
   span: number;
   channel: number;
@@ -19,6 +21,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  ook: ookDefaults,
   center: 100_000_000,
   span: SAMPLE_RATE,
   channel: 100_100_000,
@@ -33,6 +36,7 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  validateOok(s.ook);
   if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)
     throw Error(
       "Center frequency must be between 24 and 1766 MHz for the supported R820T/R828D tuner.",

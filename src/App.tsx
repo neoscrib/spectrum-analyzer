@@ -22,6 +22,8 @@ import { Spectrum } from "./components/Spectrum";
 import { WwvPanel } from "./components/WwvPanel";
 import { ArmerPanel } from "./components/ArmerPanel";
 import { PresetPanel } from "./components/PresetPanel";
+import { OokPanel } from "./components/OokPanel";
+import type { OokCapture, OokStatus } from "./ook/model";
 import { NfmPanel } from "./components/NfmPanel";
 import { SquelchSelect, ToneSelect } from "./components/ToneSelect";
 import {
@@ -80,6 +82,12 @@ const emptyMetrics: Metrics = {
 
 export default function App() {
   const [settings, setSettings] = useState(readSettings);
+  const [ookStatus, setOokStatus] = useState<OokStatus | null>(null);
+  const [ookCaptures, setOokCaptures] = useState<OokCapture[]>([]);
+  const ookLatest = useRef<OokStatus | null>(null),
+    ookPending = useRef<OokCapture[]>([]),
+    ookId = useRef(0);
+  const [ookTest, setOokTest] = useState(false);
   const [armerConfig, setArmerConfig] = useState(() =>
     loadArmerConfig(starterAliases as TalkgroupRule[]),
   );
@@ -157,6 +165,20 @@ export default function App() {
           player.push(event.samples);
         if (event.type === "telemetry" && event.protocol === "wfm")
           stereo = event.stereo;
+        if (event.type === "telemetry" && event.protocol === "ook")
+          ookLatest.current = event.status;
+        if (event.type === "message" && event.protocol === "ook") {
+          ookPending.current.push({
+            ...event.burst,
+            id: ++ookId.current,
+            frequency: settingsRef.current.channel,
+            bandwidth: settingsRef.current.bandwidth,
+            options: { ...settingsRef.current.ook },
+            test: sourceRef.current === "test",
+            receivedAt: new Date().toISOString(),
+          });
+          if (ookPending.current.length > 100) ookPending.current.shift();
+        }
         if (event.type === "timecode") lastWwv.current = event.status;
         if (event.type === "message" && event.protocol === "armer")
           armerPending.current.push(event.event);
@@ -178,6 +200,11 @@ export default function App() {
           stereo,
         });
         if (lastWwv.current) setWwv(lastWwv.current);
+        if (ookLatest.current) setOokStatus(ookLatest.current);
+        if (ookPending.current.length) {
+          const captures = ookPending.current.splice(0);
+          setOokCaptures((old) => [...old, ...captures].slice(-100));
+        }
         if (armerStatus.current)
           setArmerFeed({
             status: armerStatus.current,
@@ -259,9 +286,15 @@ export default function App() {
       setNfmFeed({ status: null, events: [] });
       setAppliedMonitor(monitor);
       setNfmTest(source === "test");
+      ookLatest.current = null;
+      ookPending.current = [];
+      setOokStatus(null);
+      setOokTest(source === "test");
       radio.current!.setTestSpeed(next.decoder === "wwv" ? testSpeed : 1);
       if (
-        next.decoder === "none" ||
+        !decoders
+          .find((d) => d.id === next.decoder)
+          ?.outputs.includes("audio") ||
         (source === "test" && next.decoder === "wwv" && testSpeed > 1)
       ) {
         audio.current!.pause();
@@ -300,6 +333,10 @@ export default function App() {
     nfmStatus.current = null;
     setNfmFeed({ status: null, events: [] });
     setNfmTest(kind === "test");
+    ookLatest.current = null;
+    ookPending.current = [];
+    setOokStatus(null);
+    setOokTest(kind === "test");
     // A known source starts with known tuning; receiver settings remain otherwise intact.
     const current =
       override ??
@@ -311,40 +348,47 @@ export default function App() {
           }
         : settingsRef.current);
     const testProfile =
-      current.decoder === "nfm"
+      current.decoder === "ook"
         ? {
-            center: 462400000,
-            channel: 462562500,
+            center: 433750000,
+            channel: 433920000,
             span: 600000,
-            decoder: "nfm" as const,
+            decoder: "ook" as const,
           }
-        : current.decoder === "armer"
+        : current.decoder === "nfm"
           ? {
-              center: 852400000,
-              channel: 853075000,
-              span: SAMPLE_RATE,
-              decoder: "armer" as const,
+              center: 462400000,
+              channel: 462562500,
+              span: 600000,
+              decoder: "nfm" as const,
             }
-          : current.decoder === "wwv"
+          : current.decoder === "armer"
             ? {
-                center: 25050000,
-                channel: 25000000,
-                span: 150000,
-                decoder: "wwv" as const,
+                center: 852400000,
+                channel: 853075000,
+                span: SAMPLE_RATE,
+                decoder: "armer" as const,
               }
-            : current.decoder === "am"
+            : current.decoder === "wwv"
               ? {
-                  center: 120000000,
-                  channel: 120100000,
-                  span: 300000,
-                  decoder: "am" as const,
+                  center: 25050000,
+                  channel: 25000000,
+                  span: 150000,
+                  decoder: "wwv" as const,
                 }
-              : {
-                  center: defaults.center,
-                  channel: defaults.channel,
-                  span: current.span,
-                  decoder: "wfm" as const,
-                };
+              : current.decoder === "am"
+                ? {
+                    center: 120000000,
+                    channel: 120100000,
+                    span: 300000,
+                    decoder: "am" as const,
+                  }
+                : {
+                    center: defaults.center,
+                    channel: defaults.channel,
+                    span: current.span,
+                    decoder: "wfm" as const,
+                  };
     const testManifest = decoders.find((d) => d.id === testProfile.decoder)!;
     const s =
       kind === "test" && !override
@@ -380,6 +424,11 @@ export default function App() {
     audio.current!.pause();
     setPlaying(false);
     await radio.current!.stop();
+    if (ookLatest.current) setOokStatus(ookLatest.current);
+    if (ookPending.current.length) {
+      const captures = ookPending.current.splice(0);
+      setOokCaptures((old) => [...old, ...captures].slice(-100));
+    }
     setSource("idle");
     setAppliedMonitor(null);
     setBusy(false);
@@ -606,13 +655,15 @@ export default function App() {
                     ? source === "test"
                       ? settings.decoder === "wwv"
                         ? `Synthetic WWV IQ · ${testSpeed}×`
-                        : settings.decoder === "nfm"
-                          ? "Generated NFM IQ · scheduled FRS test calls"
-                          : settings.decoder === "armer"
-                            ? "Generated P25 IQ · test vocoder data"
-                            : settings.decoder === "am"
-                              ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
-                              : "Synthetic IQ · L 1 kHz / R 2 kHz"
+                        : settings.decoder === "ook"
+                          ? "Generated OOK / ASK IQ · PWM test payload A6"
+                          : settings.decoder === "nfm"
+                            ? "Generated NFM IQ · scheduled FRS test calls"
+                            : settings.decoder === "armer"
+                              ? "Generated P25 IQ · test vocoder data"
+                              : settings.decoder === "am"
+                                ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
+                                : "Synthetic IQ · L 1 kHz / R 2 kHz"
                       : "Live IQ stream"
                     : metrics.samples
                       ? "Stopped · last received spectrum"
@@ -654,6 +705,21 @@ export default function App() {
                 active={active}
                 test={wwvOrigin === "test"}
                 testSpeed={testSpeed}
+              />
+            )}
+            {settings.decoder === "ook" && (
+              <OokPanel
+                status={ookStatus}
+                captures={ookCaptures}
+                options={settings.ook}
+                active={active}
+                test={ookTest}
+                busy={busy}
+                onApply={(ook) => apply({ ...settings, ook })}
+                onClear={() => {
+                  ookPending.current = [];
+                  setOokCaptures([]);
+                }}
               />
             )}
             {settings.decoder === "nfm" && (
@@ -736,15 +802,17 @@ export default function App() {
                     onClick={() => void start("test")}
                   >
                     <FlaskConical size={15} />{" "}
-                    {settings.decoder === "nfm"
-                      ? "Try NFM test signal"
-                      : settings.decoder === "armer"
-                        ? "Try ARMER test signal"
-                        : settings.decoder === "wwv"
-                          ? "Try WWV test signal"
-                          : settings.decoder === "am"
-                            ? "Try AM test signal"
-                            : "Try FM test signal"}
+                    {settings.decoder === "ook"
+                      ? "Try OOK / ASK test signal"
+                      : settings.decoder === "nfm"
+                        ? "Try NFM test signal"
+                        : settings.decoder === "armer"
+                          ? "Try ARMER test signal"
+                          : settings.decoder === "wwv"
+                            ? "Try WWV test signal"
+                            : settings.decoder === "am"
+                              ? "Try AM test signal"
+                              : "Try FM test signal"}
                   </button>
                 </>
               )}
@@ -1096,19 +1164,21 @@ export default function App() {
                   <strong>
                     {!active || settings.decoder === "none"
                       ? "—"
-                      : settings.decoder === "nfm"
-                        ? "Mono · narrowband FM"
-                        : settings.decoder === "armer"
-                          ? "Mono · P25 IMBE"
-                          : settings.decoder === "wwv"
-                            ? "Mono · AM voice + time code"
-                            : settings.decoder === "am"
-                              ? "Mono · AM envelope"
-                              : !settings.stereo
-                                ? "Mono · forced"
-                                : metrics.stereo
-                                  ? "Stereo · pilot locked"
-                                  : "Mono · awaiting stereo pilot"}
+                      : settings.decoder === "ook"
+                        ? "Pulse timings + interpreted data"
+                        : settings.decoder === "nfm"
+                          ? "Mono · narrowband FM"
+                          : settings.decoder === "armer"
+                            ? "Mono · P25 IMBE"
+                            : settings.decoder === "wwv"
+                              ? "Mono · AM voice + time code"
+                              : settings.decoder === "am"
+                                ? "Mono · AM envelope"
+                                : !settings.stereo
+                                  ? "Mono · forced"
+                                  : metrics.stereo
+                                    ? "Stereo · pilot locked"
+                                    : "Mono · awaiting stereo pilot"}
                   </strong>
                 </div>
                 <button
@@ -1116,7 +1186,9 @@ export default function App() {
                   onClick={() => void toggleAudio()}
                   disabled={
                     !active ||
-                    settings.decoder === "none" ||
+                    !decoders
+                      .find((d) => d.id === settings.decoder)
+                      ?.outputs.includes("audio") ||
                     busy ||
                     audioBusy ||
                     (source === "test" &&
@@ -1160,13 +1232,15 @@ export default function App() {
                   <span>{volume}%</span>
                 </div>
                 <span className="audio-caption">
-                  {source === "test" &&
-                  settings.decoder === "wwv" &&
-                  testSpeed > 1
-                    ? "Switch the WWV test to 1× to hear audio"
-                    : playing
-                      ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
-                      : "Audio starts only when you press play"}
+                  {settings.decoder === "ook"
+                    ? "Data decoder · inspect captured bursts below the spectrum"
+                    : source === "test" &&
+                        settings.decoder === "wwv" &&
+                        testSpeed > 1
+                      ? "Switch the WWV test to 1× to hear audio"
+                      : playing
+                        ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
+                        : "Audio starts only when you press play"}
                 </span>
               </div>
             </section>

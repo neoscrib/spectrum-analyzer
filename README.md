@@ -1,6 +1,6 @@
 # Spectrum
 
-A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and Rust/WebAssembly WFM stereo, NFM, AM, WWV time-code, and ARMER P25 Phase I decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup is an optional network service.
+A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and Rust/WebAssembly WFM stereo, NFM, AM, OOK/ASK, WWV time-code, and ARMER P25 Phase I decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup is an optional network service.
 
 ```sh
 npm ci
@@ -12,7 +12,7 @@ Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-S
 ## Receive and decode
 
 1. Close other applications using the dongle. Click **Connect RTL-SDR** and select the receiver in Chrome's USB chooser. Supported WebUSB IDs are Realtek `0bda:2832` and `0bda:2838`, with R820T/R828D-family tuners.
-2. Enter a **center frequency** in MHz and press **Tune**. This changes the hardware frequency. Retuning preserves the decoder's offset for WFM/AM/WWV. ARMER keeps its absolute control frequency fixed while you reposition the capture.
+2. Enter a **center frequency** in MHz and press **Tune**. This changes the hardware frequency. Retuning preserves the decoder's offset for WFM/AM/NFM/OOK/WWV. ARMER keeps its absolute control frequency fixed while you reposition the capture.
 3. Set **display span** from 25 kHz to 2.4 MHz. This crops the spectrum around the center; the hardware continues capturing at **2.4 MSPS**. Zooming does not change decoder tuning or its channel filter. Spans wider than the captured band are intentionally unavailable; there is no sweep mode.
 4. Select **Decode as… → WFM**, then click a station on the spectrum or enter its **decoder frequency** and press **Set**. The decoder independently mixes and filters that channel from the captured IQ. Its entire channel must fit inside the capture. Keyboard users can focus the spectrum and use left/right arrows (10 kHz; Shift for 100 kHz).
 5. Click **Play audio**. WFM outputs **stereo, 48 kHz PCM**, with a 15 kHz audio low-pass per channel and selectable 75 µs, 50 µs, or no de-emphasis. **Auto stereo** recovers the broadcast’s 19 kHz pilot and 38 kHz difference channel. The output indicator reports **Stereo · pilot locked** after acquisition. Without a stable pilot it smoothly falls back to mono; choose **Mono** to force mono output on noisy stations. RDS is not implemented.
@@ -23,7 +23,7 @@ Use **Try FM test signal** to run generated CU8 IQ through the exact same FFT, W
 
 The spectrum is an 8,192-point Hann-windowed FFT (293 Hz/bin at 2.4 MSPS). Display zoom does not increase FFT resolution. Trace smoothing, peak hold, display floor, waterfall, and PNG export are available. **Freeze view** leaves acquisition and audio running. Power is relative **dBFS**, not calibrated dBm or SNR. Input power includes the full captured band; ADC clipping counts samples at the converter limits. DSP processing is time spent processing one block divided by that block's RF duration, not total machine CPU usage.
 
-Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. Capture recording/replay, other modulation modes, RDS, and arbitrary-rate tuners remain future extensions.
+Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. IQ recording/replay, other modulation modes, RDS, and arbitrary-rate tuners remain future extensions.
 
 ## AM audio
 
@@ -54,6 +54,20 @@ Click **Monitor / scan bank** to connect if needed or reuse the current source. 
 Banks and per-preset settings persist locally. Export/import the versioned JSON library to back them up; imports replace the library after validation. Libraries are bounded to 50 banks / 2,000 total presets / 200 presets per bank and 1 MB per imported file. A bank reset restores that bank's supplied channels. Activity history records all detected carrier openings in the observed window, even when another channel is playing, with observed duration, peak level, and detected code. It retains up to 300 observations (the latest 60 are shown) and exports CSV. Stop/retune marks interrupted observations; it does not claim an unobserved transmission ended. Live observations persist; generated test observations are labelled and excluded from saved RF history.
 
 **Try NFM test signal** generates scheduled CU8 transmissions, with overlapping channels: CH 1 has a 1 kHz voice test tone plus 100 Hz CTCSS, CH 2 a 1.5 kHz tone plus DCS 023N, and CH 8 a 2 kHz tone plus 88.5 Hz CTCSS in the other RF window. The 12-second sequence repeats. Run bank monitoring against that source to exercise scanning and parallel activity detection without accessing USB. Tests verify audible tones through the actual WASM/AudioWorklet, subaudible-tone suppression, CTCSS/DCS identification, squelch release, two-window scanning, hold/resume, one audio stream, independent activity history, custom-bank persistence, JSON/CSV export/import, and responsive layouts. Native tests additionally reject noise and voice-only false codes, preserve arbitrary chunk boundaries, and cover positive/negative tuning offsets. **Live over-the-air NFM reception has not yet been verified.**
+
+## OOK / binary ASK
+
+Choose **Decode as… → OOK / ASK · pulse data**, keep or enter the target frequency, and connect the receiver. This is a data-only demodulator; playback is disabled. It supports on/off and two-level amplitude keying, not multilevel ASK or FSK. Channel widths are **10, 25, 50, or 100 kHz** (50 kHz default), independent of the display span. Move the hardware center away from the carrier to avoid the RTL-SDR DC artifact. The live envelope snapshot and threshold line help with level adjustment; short bursts can fall between display updates. Captured bursts retain their pulse train and full high/low durations.
+
+**Automatic threshold** tracks low and peak amplitudes with hysteresis and a −55 dBFS minimum slicing threshold; it needs sufficient amplitude contrast. For weak signals or close ASK levels, choose **Manual** and put the dBFS threshold between low and high. Adjust RF gain without clipping. **Minimum pulse** qualifies both transitions to reject glitches (default 50 µs); **Burst idle gap** closes a capture after continuous low (default 5000 µs). Set the gap longer than any data low interval. A 20 ms startup is ignored. Oversized bursts (2048 runs or two seconds without a delimiter) are discarded until idle; no partial packet is presented as complete.
+
+Raw timings are always retained. Optional **PWM** classifies high durations, **PPM** classifies low durations, and **NRZ** expands runs using an explicit bit period. Enter the short/long durations and optionally invert bits. Timing matches allow ±25%; `?` marks a mismatch. The final idle delimiter is excluded from PPM/NRZ data; trailing NRZ zeros cannot be inferred from an idle delimiter. Byte-aligned results show MSB-first hex. Changing interpretation applies to stored bursts as well. This is configurable bit interpretation, not automatic device recognition or checksum validation; temperature, IDs, button codes, Manchester framing, and other device-specific fields need protocol decoders.
+
+Keep the newest **100 bursts** in memory, inspect older bursts while acquisition continues, **Export captures JSON** with frequency/filter/options and generated/RF provenance, or **Export pulse data (.ook)** for a selected burst. Pulse files use microsecond high/low pairs following the documented [rtl_433 pulse-data format](https://github.com/merbanan/rtl_433/blob/master/docs/IQ_FORMATS.md). The final low is an observed lower bound, not a measurement of the full silence. Capture history is not persisted across reloads; export it before closing. OOK settings persist locally.
+
+**Try OOK / ASK test signal** generates PWM `A6` at **433.920 MHz**, captured around 433.750 MHz: 500/1000 µs highs, 500 µs lows, once per second, alternating on/off and nonzero-low ASK. Select PWM and apply 500/1000 µs to display `10100110` / `A6` (or `59` with inversion). All test captures are labelled generated, including exports and after stopping. Tests pass actual CU8 through WASM at both offset signs, reject an adjacent carrier and short glitches, preserve chunk boundaries, bound unterminated input, recover OOK and ASK, and exercise settings/history/export/responsive UI. **Live over-the-air OOK/ASK has not yet been verified.**
+
+`wasm/src/ook.rs` uses the shared mixer/complex FIR/decimator, then a second complex filter and magnitude detector at 120 kSPS, yielding **8.33 µs sample spacing**. Actual edge accuracy also depends on RF bandwidth, filter delay/ringing, signal level, and threshold; narrow filters blur short pulses. Filtering, thresholding, glitch qualification and burst acquisition run in WASM. The module emits typed pulse-message and telemetry events rather than audio. Implementation is original to this project; no rtl_433 decoder code is bundled.
 
 ## ARMER / P25 Phase I
 
@@ -87,7 +101,7 @@ NIST's [25 MHz WWV broadcast](https://www.nist.gov/pml/time-and-frequency-divisi
 
 Validated: the full generated IQ path confirms the expected UTC/date/DUT1 in Chrome, AM audio plays at 1×, corrupt position markers are rejected, and noise or an unpulsed 100 Hz tone does not create a timestamp. The actual WASM also passes NIST's published example (2001/day173/21:10/+0.3), arbitrary starting phase, stream boundaries, loss of synchronization, and WFM regression checks. **Live over-the-air WWV reception has not yet been verified.**
 
-The shared Rust `Downconverter`/FIR primitives serve WFM, AM, and WWV; AM and WWV additionally share the envelope detector in `wasm/src/am.rs`. WWV uses two-stage complex filtering/decimation (2.4 MSPS → 240 kHz → 48 kHz), envelope AM detection with slow carrier normalization, then quadrature 100 Hz recovery and pulse/frame validation. Its offline `process_audio()` entry accepts centered AM audio at 48 kHz for protocol tests; it does not bypass IQ processing in the app's generated-source/browser test.
+The shared Rust `Downconverter`/FIR primitives serve WFM, AM, OOK/ASK, and WWV; AM and WWV additionally share the envelope detector in `wasm/src/am.rs`. WWV uses two-stage complex filtering/decimation (2.4 MSPS → 240 kHz → 48 kHz), envelope AM detection with slow carrier normalization, then quadrature 100 Hz recovery and pulse/frame validation. Its offline `process_audio()` entry accepts centered AM audio at 48 kHz for protocol tests; it does not bypass IQ processing in the app's generated-source/browser test.
 
 ## Linux USB access
 
@@ -121,6 +135,7 @@ npm run check            # All three above
 npm run test:browser     # WFM regression; dev or preview server must be running
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
+npm run test:browser:ook # OOK/ASK pulses, bits, thresholds, history and exports
 npm run test:browser:nfm # NFM audio/codes, parallel monitoring, scanning, history, banks
 npm run test:browser:armer # P25 IQ/audio, talkgroup policies, aliases and XML interchange
 npm run test:fieldglass    # Exact parity with the actual ../armer/web WASM module

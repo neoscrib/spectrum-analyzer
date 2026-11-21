@@ -1,5 +1,5 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
-export type DecoderId = "none" | "wfm" | "wwv" | "am" | "armer" | "nfm";
+export type DecoderId = "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -56,6 +56,18 @@ export const decoders: DecoderManifest[] = [
     },
     outputs: ["audio", "telemetry", "message"],
     bandwidths: [10000, 12500, 15000, 20000, 25000],
+  },
+  {
+    id: "ook",
+    name: "OOK / ASK · pulse data",
+    description: "Binary amplitude keying · pulse timings + configurable bits",
+    requirements: {
+      minSampleRate: 240000,
+      bandwidthHz: 50000,
+      inputSampleRate: 2400000,
+    },
+    outputs: ["telemetry", "message"],
+    bandwidths: [10000, 25000, 50000, 100000],
   },
   {
     id: "armer",

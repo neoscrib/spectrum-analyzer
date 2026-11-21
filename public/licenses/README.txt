@@ -45,3 +45,7 @@ are original Rust implementations. Signalling parameters and independent DCS
 word test vectors follow ETSI TS 103 236 V1.1.1 (2014-01); no third-party
 CTCSS/DCS implementation code is bundled. Frequency banks cite FCC, NWS, ARRL
 and USCG channel references in the UI and README.
+
+The OOK/binary ASK envelope and pulse decoder is original Rust code. The .ook
+export follows rtl_433's documented text interchange format; no rtl_433 code
+or device protocol decoders are bundled.

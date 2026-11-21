@@ -126,6 +126,72 @@ export class NfmDecoder {
 }
 if (Symbol.dispose) NfmDecoder.prototype[Symbol.dispose] = NfmDecoder.prototype.free;
 
+export class OokDecoder {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        OokDecoderFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_ookdecoder_free(ptr, 0);
+    }
+    /**
+     * @param {number} offset_hz
+     * @param {number} bandwidth_hz
+     * @param {number} threshold_db
+     * @param {number} min_pulse_us
+     * @param {number} gap_us
+     */
+    constructor(offset_hz, bandwidth_hz, threshold_db, min_pulse_us, gap_us) {
+        const ret = wasm.ookdecoder_new(offset_hz, bandwidth_hz, threshold_db, min_pulse_us, gap_us);
+        this.__wbg_ptr = ret;
+        OokDecoderFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * CU8 at 2.4 MSPS -> complex channel filter -> 120 kSPS magnitude.
+     * @param {Uint8Array | number[]} iq
+     */
+    process(iq) {
+        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.ookdecoder_process(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @returns {string}
+     */
+    status() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.ookdecoder_status(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    take_bursts() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.ookdecoder_take_bursts(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) OokDecoder.prototype[Symbol.dispose] = OokDecoder.prototype.free;
+
 export class Receiver {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -382,6 +448,9 @@ const ArmerTestSourceFinalization = (typeof FinalizationRegistry === 'undefined'
 const NfmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_nfmdecoder_free(ptr, 1));
+const OokDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_ookdecoder_free(ptr, 1));
 const ReceiverFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_receiver_free(ptr, 1));

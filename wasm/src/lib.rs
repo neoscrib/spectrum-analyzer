@@ -2,6 +2,8 @@
 //! All filter, oscillator, discriminator and decimation state survives block boundaries.
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
+mod ook;
+pub use ook::OokDecoder;
 mod am;
 pub use am::AmDecoder;
 mod nfm;
@@ -99,7 +101,8 @@ impl Downconverter {
         let next = self.osc_r * self.step_r - self.osc_i * self.step_i;
         self.osc_i = self.osc_r * self.step_i + self.osc_i * self.step_r;
         self.osc_r = next;
-        self.count += 1;
+        // Preserve both phases without overflowing wasm32 usize on long runs.
+        self.count = (self.count + 1) % (4096 * self.decimation);
         if self.count % 4096 == 0 {
             let length = self.osc_r.hypot(self.osc_i);
             self.osc_r /= length;

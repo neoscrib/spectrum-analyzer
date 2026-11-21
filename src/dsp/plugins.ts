@@ -7,6 +7,7 @@ import {
 import type { Settings } from "../model";
 import type { DecoderEvent, WwvStatus } from "../types";
 import { ControlQualityWindow } from "../armer/quality";
+import { ookPlugin } from "./ook-plugin";
 import { nfmPlugin } from "./nfm-plugin";
 import {
   policyBitmap,
@@ -28,6 +29,7 @@ export const factories: Record<
   Exclude<Settings["decoder"], "none">,
   (s: Settings, policy?: ArmerPolicy) => DecoderPlugin
 > = {
+  ook: ookPlugin,
   nfm(s) {
     return nfmPlugin(s);
   },

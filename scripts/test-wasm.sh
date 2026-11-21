@@ -8,3 +8,4 @@ node scripts/check-wwv.mjs
 node scripts/check-armer.mjs
 node scripts/check-nfm.mjs
 node scripts/check-ook.mjs
+node scripts/check-rtl433.mjs

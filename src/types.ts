@@ -1,4 +1,5 @@
 import type { Settings } from "./model";
+import type { Rtl433Status } from "./rtl433/model";
 import type { OokBurst, OokStatus } from "./ook/model";
 import type { ArmerPolicy, ArmerStatus, P25Event } from "./armer/model";
 import type {
@@ -37,6 +38,8 @@ export interface WwvStatus {
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "message"; protocol: "rtl433"; data: Record<string, unknown> }
+  | { type: "telemetry"; protocol: "rtl433"; status: Rtl433Status }
   | { type: "telemetry"; protocol: "ook"; status: OokStatus }
   | { type: "message"; protocol: "ook"; burst: OokBurst }
   | { type: "telemetry"; protocol: "nfm"; status: NfmTelemetry }

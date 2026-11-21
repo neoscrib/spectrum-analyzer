@@ -5,7 +5,13 @@ import { decoders, type DecoderId } from "./decoders";
 import { validateTone, type ToneFilter } from "./presets/tones";
 export { decoders, type DecoderId } from "./decoders";
 import { ookDefaults, validateOok, type OokOptions } from "./ook/model";
+import {
+  rtl433Defaults,
+  validateRtl433,
+  type Rtl433Options,
+} from "./rtl433/model";
 export interface Settings {
+  rtl433: Rtl433Options;
   ook: OokOptions;
   center: number;
   span: number;
@@ -21,6 +27,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  rtl433: rtl433Defaults,
   ook: ookDefaults,
   center: 100_000_000,
   span: SAMPLE_RATE,
@@ -36,6 +43,7 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  validateRtl433(s.rtl433);
   validateOok(s.ook);
   if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)
     throw Error(

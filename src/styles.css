@@ -1843,9 +1843,100 @@ h1 {
 }
 
 /* Conventional radio and reusable preset banks */
+.rtl433-panel,
 .nfm-panel {
   padding: 22px 24px;
   border-top: 1px solid var(--border);
+}
+.rtl433-panel {
+  min-width: 0;
+}
+.rtl433-panel h2 small {
+  font: 10px var(--mono);
+  color: var(--muted);
+}
+.rtl433-controls,
+.rtl433-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 0;
+}
+.rtl433-controls label,
+.rtl433-toolbar label {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.rtl433-controls select,
+.rtl433-controls input,
+.rtl433-toolbar input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: #141a21;
+  color: #dce4eb;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+}
+.rtl433-controls .button,
+.rtl433-toolbar .button {
+  width: auto;
+  min-height: 34px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.rtl433-messages {
+  max-height: 520px;
+  overflow: auto;
+}
+.rtl433-message {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+.rtl433-message summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  cursor: pointer;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.rtl433-message summary strong {
+  color: var(--text);
+}
+.rtl433-message summary span {
+  color: var(--muted);
+}
+.rtl433-message summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+.rtl433-message[open] summary::before {
+  content: "▾";
+}
+.rtl433-message pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.6 var(--mono);
+  margin: 14px 0 0;
+}
+.rtl433-panel .caption {
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .rtl433-panel {
+    padding: 18px;
+  }
+  .rtl433-toolbar .button {
+    flex: 1 1 120px;
+  }
 }
 .nfm-heading,
 .preset-heading {

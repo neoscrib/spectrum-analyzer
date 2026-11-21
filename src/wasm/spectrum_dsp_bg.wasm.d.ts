@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_amdecoder_free: (a: number, b: number) => void;
 export const __wbg_armertestsource_free: (a: number, b: number) => void;
+export const __wbg_iqchannelizer_free: (a: number, b: number) => void;
 export const __wbg_nfmdecoder_free: (a: number, b: number) => void;
 export const __wbg_ookdecoder_free: (a: number, b: number) => void;
 export const __wbg_receiver_free: (a: number, b: number) => void;
@@ -12,6 +13,8 @@ export const amdecoder_new: (a: number, b: number) => number;
 export const amdecoder_process: (a: number, b: number, c: number) => [number, number];
 export const armertestsource_new: () => number;
 export const armertestsource_process: (a: number, b: number, c: number) => [number, number];
+export const iqchannelizer_new: (a: number, b: number) => number;
+export const iqchannelizer_process: (a: number, b: number, c: number) => [number, number];
 export const nfmdecoder_new: (a: number, b: number, c: number, d: number) => number;
 export const nfmdecoder_process: (a: number, b: number, c: number) => [number, number];
 export const nfmdecoder_status: (a: number) => [number, number];

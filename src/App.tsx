@@ -29,6 +29,12 @@ import {
   type RecordingState,
 } from "./recording/model";
 import { folderSink, downloadSink } from "./recording/storage";
+import { Rtl433Panel } from "./components/Rtl433Panel";
+import type {
+  Rtl433Message,
+  Rtl433Status,
+  Rtl433Protocol,
+} from "./rtl433/model";
 import { OokPanel } from "./components/OokPanel";
 import type { OokCapture, OokStatus } from "./ook/model";
 import { NfmPanel } from "./components/NfmPanel";
@@ -91,6 +97,20 @@ export default function App() {
   const [settings, setSettings] = useState(readSettings);
   const [recording, setRecording] = useState<RecordingState>(idleRecording);
   const [recordPreparing, setRecordPreparing] = useState(false);
+  const [rtlStatus, setRtlStatus] = useState<Rtl433Status | null>(null);
+  const [rtlProtocols, setRtlProtocols] = useState<Rtl433Protocol[]>([]);
+  const [rtlMessages, setRtlMessages] = useState<Rtl433Message[]>([]);
+  const rtlLatest = useRef<Rtl433Status | null>(null),
+    rtlPending = useRef<Rtl433Message[]>([]),
+    rtlId = useRef(0);
+  const [rtlTest, setRtlTest] = useState(false);
+  function flushRtl() {
+    if (rtlLatest.current) setRtlStatus(rtlLatest.current);
+    if (rtlPending.current.length) {
+      const messages = rtlPending.current.splice(0);
+      setRtlMessages((old) => [...old, ...messages].slice(-300));
+    }
+  }
   const [ookStatus, setOokStatus] = useState<OokStatus | null>(null);
   const [ookCaptures, setOokCaptures] = useState<OokCapture[]>([]);
   const ookLatest = useRef<OokStatus | null>(null),
@@ -179,6 +199,21 @@ export default function App() {
           player.push(event.samples);
         if (event.type === "telemetry" && event.protocol === "wfm")
           stereo = event.stereo;
+        if (event.type === "telemetry" && event.protocol === "rtl433") {
+          rtlLatest.current = event.status;
+          if (event.status.protocols) setRtlProtocols(event.status.protocols);
+        }
+        if (event.type === "message" && event.protocol === "rtl433") {
+          rtlPending.current.push({
+            id: ++rtlId.current,
+            receivedAt: new Date().toISOString(),
+            source: sourceRef.current === "test" ? "test" : "live",
+            frequency: settingsRef.current.channel,
+            bandwidth: settingsRef.current.bandwidth,
+            data: event.data,
+          });
+          if (rtlPending.current.length > 300) rtlPending.current.shift();
+        }
         if (event.type === "telemetry" && event.protocol === "ook")
           ookLatest.current = event.status;
         if (event.type === "message" && event.protocol === "ook") {
@@ -213,6 +248,7 @@ export default function App() {
           samples,
           stereo,
         });
+        flushRtl();
         if (lastWwv.current) setWwv(lastWwv.current);
         if (ookLatest.current) setOokStatus(ookLatest.current);
         if (ookPending.current.length) {
@@ -300,6 +336,10 @@ export default function App() {
       setNfmFeed({ status: null, events: [] });
       setAppliedMonitor(monitor);
       setNfmTest(source === "test");
+      rtlLatest.current = null;
+      rtlPending.current = [];
+      setRtlStatus(null);
+      setRtlTest(source === "test");
       ookLatest.current = null;
       ookPending.current = [];
       setOokStatus(null);
@@ -347,6 +387,10 @@ export default function App() {
     nfmStatus.current = null;
     setNfmFeed({ status: null, events: [] });
     setNfmTest(kind === "test");
+    rtlLatest.current = null;
+    rtlPending.current = [];
+    setRtlStatus(null);
+    setRtlTest(kind === "test");
     ookLatest.current = null;
     ookPending.current = [];
     setOokStatus(null);
@@ -362,47 +406,54 @@ export default function App() {
           }
         : settingsRef.current);
     const testProfile =
-      current.decoder === "ook"
+      current.decoder === "rtl433"
         ? {
             center: 433750000,
             channel: 433920000,
             span: 600000,
-            decoder: "ook" as const,
+            decoder: "rtl433" as const,
           }
-        : current.decoder === "nfm"
+        : current.decoder === "ook"
           ? {
-              center: 462400000,
-              channel: 462562500,
+              center: 433750000,
+              channel: 433920000,
               span: 600000,
-              decoder: "nfm" as const,
+              decoder: "ook" as const,
             }
-          : current.decoder === "armer"
+          : current.decoder === "nfm"
             ? {
-                center: 852400000,
-                channel: 853075000,
-                span: SAMPLE_RATE,
-                decoder: "armer" as const,
+                center: 462400000,
+                channel: 462562500,
+                span: 600000,
+                decoder: "nfm" as const,
               }
-            : current.decoder === "wwv"
+            : current.decoder === "armer"
               ? {
-                  center: 25050000,
-                  channel: 25000000,
-                  span: 150000,
-                  decoder: "wwv" as const,
+                  center: 852400000,
+                  channel: 853075000,
+                  span: SAMPLE_RATE,
+                  decoder: "armer" as const,
                 }
-              : current.decoder === "am"
+              : current.decoder === "wwv"
                 ? {
-                    center: 120000000,
-                    channel: 120100000,
-                    span: 300000,
-                    decoder: "am" as const,
+                    center: 25050000,
+                    channel: 25000000,
+                    span: 150000,
+                    decoder: "wwv" as const,
                   }
-                : {
-                    center: defaults.center,
-                    channel: defaults.channel,
-                    span: current.span,
-                    decoder: "wfm" as const,
-                  };
+                : current.decoder === "am"
+                  ? {
+                      center: 120000000,
+                      channel: 120100000,
+                      span: 300000,
+                      decoder: "am" as const,
+                    }
+                  : {
+                      center: defaults.center,
+                      channel: defaults.channel,
+                      span: current.span,
+                      decoder: "wfm" as const,
+                    };
     const testManifest = decoders.find((d) => d.id === testProfile.decoder)!;
     const s =
       kind === "test" && !override
@@ -438,6 +489,7 @@ export default function App() {
     audio.current!.pause();
     setPlaying(false);
     await radio.current!.stop();
+    flushRtl();
     if (ookLatest.current) setOokStatus(ookLatest.current);
     if (ookPending.current.length) {
       const captures = ookPending.current.splice(0);
@@ -703,15 +755,17 @@ export default function App() {
                     ? source === "test"
                       ? settings.decoder === "wwv"
                         ? `Synthetic WWV IQ · ${testSpeed}×`
-                        : settings.decoder === "ook"
-                          ? "Generated OOK / ASK IQ · PWM test payload A6"
-                          : settings.decoder === "nfm"
-                            ? "Generated NFM IQ · scheduled FRS test calls"
-                            : settings.decoder === "armer"
-                              ? "Generated P25 IQ · test vocoder data"
-                              : settings.decoder === "am"
-                                ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
-                                : "Synthetic IQ · L 1 kHz / R 2 kHz"
+                        : settings.decoder === "rtl433"
+                          ? "Generated rtl_433 IQ · OOK + FSK devices"
+                          : settings.decoder === "ook"
+                            ? "Generated OOK / ASK IQ · PWM test payload A6"
+                            : settings.decoder === "nfm"
+                              ? "Generated NFM IQ · scheduled FRS test calls"
+                              : settings.decoder === "armer"
+                                ? "Generated P25 IQ · test vocoder data"
+                                : settings.decoder === "am"
+                                  ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
+                                  : "Synthetic IQ · L 1 kHz / R 2 kHz"
                       : "Live IQ stream"
                     : metrics.samples
                       ? "Stopped · last received spectrum"
@@ -753,6 +807,22 @@ export default function App() {
                 active={active}
                 test={wwvOrigin === "test"}
                 testSpeed={testSpeed}
+              />
+            )}
+            {settings.decoder === "rtl433" && (
+              <Rtl433Panel
+                status={rtlStatus}
+                protocols={rtlProtocols}
+                messages={rtlMessages}
+                options={settings.rtl433}
+                active={active}
+                test={rtlTest}
+                busy={busy}
+                onApply={(rtl433) => void apply({ ...settings, rtl433 })}
+                onClear={() => {
+                  rtlPending.current = [];
+                  setRtlMessages([]);
+                }}
               />
             )}
             {settings.decoder === "ook" && (
@@ -850,17 +920,19 @@ export default function App() {
                     onClick={() => void start("test")}
                   >
                     <FlaskConical size={15} />{" "}
-                    {settings.decoder === "ook"
-                      ? "Try OOK / ASK test signal"
-                      : settings.decoder === "nfm"
-                        ? "Try NFM test signal"
-                        : settings.decoder === "armer"
-                          ? "Try ARMER test signal"
-                          : settings.decoder === "wwv"
-                            ? "Try WWV test signal"
-                            : settings.decoder === "am"
-                              ? "Try AM test signal"
-                              : "Try FM test signal"}
+                    {settings.decoder === "rtl433"
+                      ? "Try rtl_433 test signal"
+                      : settings.decoder === "ook"
+                        ? "Try OOK / ASK test signal"
+                        : settings.decoder === "nfm"
+                          ? "Try NFM test signal"
+                          : settings.decoder === "armer"
+                            ? "Try ARMER test signal"
+                            : settings.decoder === "wwv"
+                              ? "Try WWV test signal"
+                              : settings.decoder === "am"
+                                ? "Try AM test signal"
+                                : "Try FM test signal"}
                   </button>
                 </>
               )}
@@ -1222,21 +1294,23 @@ export default function App() {
                   <strong>
                     {!active || settings.decoder === "none"
                       ? "—"
-                      : settings.decoder === "ook"
-                        ? "Pulse timings + interpreted data"
-                        : settings.decoder === "nfm"
-                          ? "Mono · narrowband FM"
-                          : settings.decoder === "armer"
-                            ? "Mono · P25 IMBE"
-                            : settings.decoder === "wwv"
-                              ? "Mono · AM voice + time code"
-                              : settings.decoder === "am"
-                                ? "Mono · AM envelope"
-                                : !settings.stereo
-                                  ? "Mono · forced"
-                                  : metrics.stereo
-                                    ? "Stereo · pilot locked"
-                                    : "Mono · awaiting stereo pilot"}
+                      : settings.decoder === "rtl433"
+                        ? "Device messages · JSON"
+                        : settings.decoder === "ook"
+                          ? "Pulse timings + interpreted data"
+                          : settings.decoder === "nfm"
+                            ? "Mono · narrowband FM"
+                            : settings.decoder === "armer"
+                              ? "Mono · P25 IMBE"
+                              : settings.decoder === "wwv"
+                                ? "Mono · AM voice + time code"
+                                : settings.decoder === "am"
+                                  ? "Mono · AM envelope"
+                                  : !settings.stereo
+                                    ? "Mono · forced"
+                                    : metrics.stereo
+                                      ? "Stereo · pilot locked"
+                                      : "Mono · awaiting stereo pilot"}
                   </strong>
                 </div>
                 <button
@@ -1290,15 +1364,17 @@ export default function App() {
                   <span>{volume}%</span>
                 </div>
                 <span className="audio-caption">
-                  {settings.decoder === "ook"
-                    ? "Data decoder · inspect captured bursts below the spectrum"
-                    : source === "test" &&
-                        settings.decoder === "wwv" &&
-                        testSpeed > 1
-                      ? "Switch the WWV test to 1× to hear audio"
-                      : playing
-                        ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
-                        : "Audio starts only when you press play"}
+                  {settings.decoder === "rtl433"
+                    ? "Data decoder · inspect device messages below the spectrum"
+                    : settings.decoder === "ook"
+                      ? "Data decoder · inspect captured bursts below the spectrum"
+                      : source === "test" &&
+                          settings.decoder === "wwv" &&
+                          testSpeed > 1
+                        ? "Switch the WWV test to 1× to hear audio"
+                        : playing
+                          ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
+                          : "Audio starts only when you press play"}
                 </span>
               </div>
             </section>

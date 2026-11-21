@@ -1,0 +1,24 @@
+rtl_433 25.12 — GPL-2.0-or-later
+Upstream: https://github.com/merbanan/rtl_433
+Tag: 25.12
+Commit: ea7d504877df751a202432d47dbb0c425ab0a93c
+
+The browser decoder uses the actual upstream rtl_433 DSP and protocol registry,
+compiled with Emscripten 7.0.0. It is distributed under GPL-2.0-or-later.
+Copyright belongs to the upstream authors listed in the source files.
+There is no warranty. See rtl_433-COPYING.txt for the complete license.
+
+Complete upstream source: rtl_433-25.12-source.tar.gz
+SHA256: 168e2052dfb9d9ffc6bc7d8581ad4757dac53b78f57b3dec76c447c7ae3880c5
+Embedding adapter source: rtl_433-bridge.c
+Build recipe, flags, and the scratch-buffer-size modification: rtl_433-build.sh
+These files are available in this same /licenses/ directory. Rebuild from the
+application repository using npm run build:rtl433 with Emscripten on PATH.
+The adapter includes rtl_433.c to reuse its streaming acquisition callback.
+Hardware acquisition, network outputs, and command-line main are not exposed.
+
+Other integration source is in src/dsp/rtl433-plugin.ts, src/rtl433/,
+src/components/Rtl433Panel.tsx, src/dsp/decoder.worker.ts, and the shared Rust
+IQ channelizer wasm/src/channelizer.rs in this application's source repository.
+Distributors must preserve the applicable GPL notices and provide corresponding
+source for covered work. A separate WASM file does not waive GPL obligations.

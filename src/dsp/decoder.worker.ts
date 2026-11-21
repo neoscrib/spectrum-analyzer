@@ -10,6 +10,7 @@ import type { ArmerPolicy } from "../armer/model";
 import { nfmPlugin } from "./nfm-plugin";
 import { NfmTestSignal } from "./nfm-synthetic";
 import { OokTestSignal } from "./ook-synthetic";
+import { Rtl433TestSignal } from "./rtl433-synthetic";
 import type { NfmMonitorConfig } from "../presets/model";
 
 let settings: Settings;
@@ -20,6 +21,7 @@ let wwvSource = new WwvTestSignal();
 let amSource = new AmTestSignal();
 let armerSource: ArmerTestSource | undefined;
 let ookSource = new OokTestSignal();
+let rtl433Source = new Rtl433TestSignal();
 let nfmSource = new NfmTestSignal();
 let armerPolicy: ArmerPolicy = { defaultListen: true, rules: [] };
 let revision = 0;
@@ -29,19 +31,20 @@ let loading = Promise.resolve();
 function send(message: WorkerOut, transfer: Transferable[] = []) {
   postMessage(message, transfer);
 }
-function configure(
+async function configure(
   s: Settings,
   nextRevision: number,
   monitor: NfmMonitorConfig | null = null,
 ) {
   validateSettings(s);
   decoder?.dispose();
+  decoder = undefined;
   decoder =
     s.decoder === "none"
       ? undefined
       : s.decoder === "nfm"
         ? nfmPlugin(s, monitor)
-        : factories[s.decoder](s, armerPolicy);
+        : await factories[s.decoder](s, armerPolicy);
   samplesProcessed = 0;
   settings = s;
   revision = nextRevision;
@@ -103,11 +106,12 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
           amSource = new AmTestSignal();
           nfmSource = new NfmTestSignal();
           ookSource = new OokTestSignal();
-          configure(data.settings, data.revision, data.monitor);
+          rtl433Source = new Rtl433TestSignal();
+          await configure(data.settings, data.revision, data.monitor);
           send({ type: "ready" });
           break;
         case "configure":
-          configure(data.settings, data.revision, data.monitor);
+          await configure(data.settings, data.revision, data.monitor);
           break;
         case "recording":
           recordingId = data.id;
@@ -127,20 +131,22 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "test":
           if (data.revision === revision)
             process(
-              settings.decoder === "ook"
-                ? ookSource.process(settings.center)
-                : settings.decoder === "nfm"
-                  ? nfmSource.process(settings.center)
-                  : settings.decoder === "wwv"
-                    ? wwvSource.process(settings.center)
-                    : settings.decoder === "armer"
-                      ? (armerSource ??= new ArmerTestSource()).process(
-                          settings.center,
-                          65536,
-                        )
-                      : settings.decoder === "am"
-                        ? amSource.process(settings.center)
-                        : source.process(settings.center),
+              settings.decoder === "rtl433"
+                ? rtl433Source.process(settings.center)
+                : settings.decoder === "ook"
+                  ? ookSource.process(settings.center)
+                  : settings.decoder === "nfm"
+                    ? nfmSource.process(settings.center)
+                    : settings.decoder === "wwv"
+                      ? wwvSource.process(settings.center)
+                      : settings.decoder === "armer"
+                        ? (armerSource ??= new ArmerTestSource()).process(
+                            settings.center,
+                            65536,
+                          )
+                        : settings.decoder === "am"
+                          ? amSource.process(settings.center)
+                          : source.process(settings.center),
             );
           break;
         case "close":

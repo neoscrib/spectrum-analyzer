@@ -2,6 +2,8 @@
 //! All filter, oscillator, discriminator and decimation state survives block boundaries.
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
+mod channelizer;
+pub use channelizer::IqChannelizer;
 mod ook;
 pub use ook::OokDecoder;
 mod am;

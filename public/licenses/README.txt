@@ -46,6 +46,11 @@ word test vectors follow ETSI TS 103 236 V1.1.1 (2014-01); no third-party
 CTCSS/DCS implementation code is bundled. Frequency banks cite FCC, NWS, ARRL
 and USCG channel references in the UI and README.
 
-The OOK/binary ASK envelope and pulse decoder is original Rust code. The .ook
-export follows rtl_433's documented text interchange format; no rtl_433 code
-or device protocol decoders are bundled.
+The OOK/binary ASK envelope and pulse decoder is original Rust code. Its .ook
+export follows rtl_433's documented text interchange format.
+
+rtl_433 25.12 — GPL-2.0-or-later, compiled separately with Emscripten 7.0.0.
+https://github.com/merbanan/rtl_433
+Complete bundled source, embedding adapter, build recipe and license details:
+rtl_433-NOTICE.txt, rtl_433-25.12-source.tar.gz, rtl_433-bridge.c,
+rtl_433-build.sh, rtl_433-COPYING.txt.

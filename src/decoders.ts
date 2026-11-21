@@ -1,5 +1,13 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
-export type DecoderId = "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook";
+export type DecoderId =
+  | "none"
+  | "wfm"
+  | "wwv"
+  | "am"
+  | "armer"
+  | "nfm"
+  | "ook"
+  | "rtl433";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -68,6 +76,18 @@ export const decoders: DecoderManifest[] = [
     },
     outputs: ["telemetry", "message"],
     bandwidths: [10000, 25000, 50000, 100000],
+  },
+  {
+    id: "rtl433",
+    name: "rtl_433 · ISM devices",
+    description: "OOK + FSK device protocols · structured JSON messages",
+    requirements: {
+      minSampleRate: 240000,
+      bandwidthHz: 200000,
+      inputSampleRate: 2400000,
+    },
+    outputs: ["message", "telemetry"],
+    bandwidths: [50000, 100000, 150000, 200000],
   },
   {
     id: "armer",

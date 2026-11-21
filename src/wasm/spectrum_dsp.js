@@ -72,6 +72,43 @@ export class ArmerTestSource {
 }
 if (Symbol.dispose) ArmerTestSource.prototype[Symbol.dispose] = ArmerTestSource.prototype.free;
 
+export class IqChannelizer {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        IqChannelizerFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_iqchannelizer_free(ptr, 0);
+    }
+    /**
+     * @param {number} offset_hz
+     * @param {number} bandwidth_hz
+     */
+    constructor(offset_hz, bandwidth_hz) {
+        const ret = wasm.iqchannelizer_new(offset_hz, bandwidth_hz);
+        this.__wbg_ptr = ret;
+        IqChannelizerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * 2.4 MSPS CU8 -> 240 kSPS interleaved signed 16-bit I/Q.
+     * @param {Uint8Array | number[]} iq
+     * @returns {Int16Array}
+     */
+    process(iq) {
+        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.iqchannelizer_process(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayI16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v2;
+    }
+}
+if (Symbol.dispose) IqChannelizer.prototype[Symbol.dispose] = IqChannelizer.prototype.free;
+
 export class NfmDecoder {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -445,6 +482,9 @@ const AmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
 const ArmerTestSourceFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_armertestsource_free(ptr, 1));
+const IqChannelizerFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_iqchannelizer_free(ptr, 1));
 const NfmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_nfmdecoder_free(ptr, 1));
@@ -466,6 +506,11 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 
+function getArrayI16FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt16ArrayMemory0().subarray(ptr / 2, ptr / 2 + len);
+}
+
 function getArrayU8FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
@@ -477,6 +522,14 @@ function getFloat32ArrayMemory0() {
         cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
     }
     return cachedFloat32ArrayMemory0;
+}
+
+let cachedInt16ArrayMemory0 = null;
+function getInt16ArrayMemory0() {
+    if (cachedInt16ArrayMemory0 === null || cachedInt16ArrayMemory0.byteLength === 0) {
+        cachedInt16ArrayMemory0 = new Int16Array(wasm.memory.buffer);
+    }
+    return cachedInt16ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -549,6 +602,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedFloat32ArrayMemory0 = null;
+    cachedInt16ArrayMemory0 = null;
     cachedUint16ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();

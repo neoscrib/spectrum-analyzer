@@ -9,6 +9,7 @@ import type { DecoderEvent, WwvStatus } from "../types";
 import { ControlQualityWindow } from "../armer/quality";
 import { ookPlugin } from "./ook-plugin";
 import { nfmPlugin } from "./nfm-plugin";
+import { rtl433Plugin } from "./rtl433-plugin";
 import {
   policyBitmap,
   type ArmerPolicy,
@@ -27,8 +28,9 @@ export interface DecoderPlugin {
 }
 export const factories: Record<
   Exclude<Settings["decoder"], "none">,
-  (s: Settings, policy?: ArmerPolicy) => DecoderPlugin
+  (s: Settings, policy?: ArmerPolicy) => DecoderPlugin | Promise<DecoderPlugin>
 > = {
+  rtl433: rtl433Plugin,
   ook: ookPlugin,
   nfm(s) {
     return nfmPlugin(s);

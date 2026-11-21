@@ -22,6 +22,16 @@ export class ArmerTestSource {
     process(center: number, count: number): Uint8Array;
 }
 
+export class IqChannelizer {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(offset_hz: number, bandwidth_hz: number);
+    /**
+     * 2.4 MSPS CU8 -> 240 kSPS interleaved signed 16-bit I/Q.
+     */
+    process(iq: Uint8Array | number[]): Int16Array;
+}
+
 export class NfmDecoder {
     free(): void;
     [Symbol.dispose](): void;
@@ -91,6 +101,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_amdecoder_free: (a: number, b: number) => void;
     readonly __wbg_armertestsource_free: (a: number, b: number) => void;
+    readonly __wbg_iqchannelizer_free: (a: number, b: number) => void;
     readonly __wbg_nfmdecoder_free: (a: number, b: number) => void;
     readonly __wbg_ookdecoder_free: (a: number, b: number) => void;
     readonly __wbg_receiver_free: (a: number, b: number) => void;
@@ -100,6 +111,8 @@ export interface InitOutput {
     readonly amdecoder_process: (a: number, b: number, c: number) => [number, number];
     readonly armertestsource_new: () => number;
     readonly armertestsource_process: (a: number, b: number, c: number) => [number, number];
+    readonly iqchannelizer_new: (a: number, b: number) => number;
+    readonly iqchannelizer_process: (a: number, b: number, c: number) => [number, number];
     readonly nfmdecoder_new: (a: number, b: number, c: number, d: number) => number;
     readonly nfmdecoder_process: (a: number, b: number, c: number) => [number, number];
     readonly nfmdecoder_status: (a: number) => [number, number];

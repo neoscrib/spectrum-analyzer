@@ -7,6 +7,12 @@ import type { Frame, WorkerIn, WorkerOut } from "./types";
 import type { ArmerPolicy } from "./armer/model";
 import type { NfmMonitorConfig } from "./presets/model";
 
+import { IqRecorder } from "./recording/recorder";
+import {
+  idleRecording,
+  type RecordingSink,
+  type RecordingState,
+} from "./recording/model";
 export function usbError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/No device selected|cancelled|canceled/i.test(message))
@@ -30,6 +36,56 @@ type Command = {
 export class RadioSession {
   onFrame: (frame: Frame, backlog: number) => void = () => {};
   onError: (message: string) => void = () => {};
+  onRecording: (state: RecordingState) => void = () => {};
+  private recorder?: IqRecorder;
+  private recordingId = 0;
+  startRecording(sink: RecordingSink, seconds: number) {
+    if (!this.running || !this.settings || this.commands.length)
+      throw Error("Start a source and finish tuning before recording IQ.");
+    if (
+      this.recorder &&
+      ["recording", "saving"].includes(this.recorder.state.phase)
+    )
+      throw Error("Finish the current IQ recording first.");
+    const recorder = new IqRecorder(
+      sink,
+      {
+        filename: sink.filename,
+        source: this.source,
+        settings: this.settings,
+        startedAt: new Date().toISOString(),
+      },
+      seconds,
+      (state) => {
+        if (this.recorder !== recorder) return;
+        if (state.phase !== "recording")
+          this.post({ type: "recording", id: 0 });
+        this.onRecording(state);
+      },
+    );
+    this.recorder = recorder;
+    this.onRecording({
+      ...recorder.state,
+      info: structuredClone(recorder.state.info),
+    });
+    this.post({ type: "recording", id: ++this.recordingId });
+  }
+  async stopRecording(reason = "Stopped by user") {
+    const recorder = this.recorder;
+    if (!recorder || ["complete", "error"].includes(recorder.state.phase))
+      return;
+    this.post({ type: "recording", id: 0 });
+    await recorder.finish(reason);
+  }
+  clearRecording() {
+    if (
+      this.recorder &&
+      ["recording", "saving"].includes(this.recorder.state.phase)
+    )
+      return;
+    this.recorder = undefined;
+    this.onRecording({ ...idleRecording });
+  }
   private device?: RtlDevice;
   private provider?: RTL2832U_Provider;
   private worker?: Worker;
@@ -90,6 +146,8 @@ export class RadioSession {
           return;
         }
         this.busy = false;
+        if (data.recording?.id === this.recordingId)
+          this.recorder?.push(data.recording.data);
         if (data.revision === this.revision)
           this.onFrame(data, this.queue.length);
         this.pump();
@@ -271,6 +329,8 @@ export class RadioSession {
   ): Promise<void> {
     validateSettings(settings);
     if (!this.running) throw Error("Start a source before adjusting it.");
+    await this.stopRecording("Receiver or decoder configuration changed");
+    if (!this.running) throw Error("Reception stopped.");
     if (this.source === "test") {
       this.configure(settings, monitor);
       return;
@@ -298,11 +358,12 @@ export class RadioSession {
   }
   private fail(message: string) {
     this.provider = undefined;
-    void this.stop();
+    void this.stop(message);
     this.onError(message);
   }
-  stop(): Promise<void> {
+  stop(reason = "Receiver stopped"): Promise<void> {
     if (this.stopping) return this.stopping;
+    const recording = this.stopRecording(reason);
     this.running = false;
     clearTimeout(this.timer);
     this.queue = [];
@@ -324,6 +385,7 @@ export class RadioSession {
         } catch {
           /* An unplugged device may already be closed. */
         }
+      await recording;
     })();
     this.stopping = cleanup;
     void cleanup.finally(() => {

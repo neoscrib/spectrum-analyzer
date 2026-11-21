@@ -18,7 +18,8 @@
     "test:fieldglass": "node scripts/compare-fieldglass.mjs",
     "test:usb": "node scripts/browser-usb-check.mjs",
     "check": "npm test && npm run test:wasm && npm run build",
-    "test:browser:ook": "node scripts/browser-ook-check.mjs"
+    "test:browser:ook": "node scripts/browser-ook-check.mjs",
+    "test:browser:recording": "node scripts/browser-recording-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",

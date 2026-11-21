@@ -27,6 +27,7 @@ interface Props {
   settings: Settings;
   source: "idle" | "live" | "test";
   busy: boolean;
+  scanPaused?: boolean;
   feed: NfmFeed;
   generation: number;
   applied: NfmMonitorConfig | null;
@@ -74,6 +75,7 @@ export function PresetPanel({
   settings,
   source,
   busy,
+  scanPaused = false,
   feed,
   generation,
   applied,
@@ -437,7 +439,7 @@ export function PresetPanel({
         {pending
           ? "Applying capture window…"
           : scan
-            ? `${applied?.holdId ? "Holding channel" : status?.channels.some((c) => c.carrier) ? "Activity · holding RF window" : "Scanning"} · window ${windowIndex + 1} / ${windows.length} · ${applied?.presets.length ?? 0} parallel receivers${selected ? ` · selected ${selected.name}` : ""}`
+            ? `${scanPaused ? "IQ recording holds RF window" : applied?.holdId ? "Holding channel" : status?.channels.some((c) => c.carrier) ? "Activity · holding RF window" : "Scanning"} · window ${windowIndex + 1} / ${windows.length} · ${applied?.presets.length ?? 0} parallel receivers${selected ? ` · selected ${selected.name}` : ""}`
             : `${bank.presets.length} presets · ${windows.length} capture window${windows.length === 1 ? "" : "s"} for enabled NFM channels`}
       </div>
       <p className="caption">

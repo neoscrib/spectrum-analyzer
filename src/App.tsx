@@ -22,6 +22,13 @@ import { Spectrum } from "./components/Spectrum";
 import { WwvPanel } from "./components/WwvPanel";
 import { ArmerPanel } from "./components/ArmerPanel";
 import { PresetPanel } from "./components/PresetPanel";
+import { IqRecordingPanel } from "./components/IqRecordingPanel";
+import {
+  captureName,
+  idleRecording,
+  type RecordingState,
+} from "./recording/model";
+import { folderSink, downloadSink } from "./recording/storage";
 import { OokPanel } from "./components/OokPanel";
 import type { OokCapture, OokStatus } from "./ook/model";
 import { NfmPanel } from "./components/NfmPanel";
@@ -82,6 +89,8 @@ const emptyMetrics: Metrics = {
 
 export default function App() {
   const [settings, setSettings] = useState(readSettings);
+  const [recording, setRecording] = useState<RecordingState>(idleRecording);
+  const [recordPreparing, setRecordPreparing] = useState(false);
   const [ookStatus, setOokStatus] = useState<OokStatus | null>(null);
   const [ookCaptures, setOokCaptures] = useState<OokCapture[]>([]);
   const ookLatest = useRef<OokStatus | null>(null),
@@ -140,6 +149,10 @@ export default function App() {
   if (!radio.current) radio.current = new RadioSession();
   if (!audio.current) audio.current = new BrowserAudio();
   const active = source !== "idle";
+  const recordLocked =
+    recordPreparing ||
+    recording.phase === "recording" ||
+    recording.phase === "saving";
   const rfPending =
     settings.gain !== (rfDraft.auto ? null : rfDraft.gain) ||
     settings.ppm !== Number(rfDraft.ppm);
@@ -148,6 +161,7 @@ export default function App() {
       samples = 0;
     const session = radio.current!,
       player = audio.current!;
+    session.onRecording = setRecording;
     session.onFrame = (frame, backlog) => {
       if (frame.spectrum) fft.current = frame.spectrum;
       let stereo = false;
@@ -432,6 +446,40 @@ export default function App() {
     setSource("idle");
     setAppliedMonitor(null);
     setBusy(false);
+  }
+  async function startRecording(mode: "disk" | "download", seconds: number) {
+    if (recordPreparing || busy || !active) return;
+    setError("");
+    setRecordPreparing(true);
+    const current = settingsRef.current,
+      originalSource = sourceRef.current;
+    const filename = captureName(
+      current,
+      originalSource === "test" ? "test" : "live",
+    );
+    let sink;
+    try {
+      // Invoke the directory picker in the original button gesture.
+      sink =
+        mode === "disk" ? await folderSink(filename) : downloadSink(filename);
+      if (
+        sourceRef.current !== originalSource ||
+        settingsRef.current.center !== current.center
+      )
+        throw Error(
+          "Receiver changed while choosing a folder. Start the recording again.",
+        );
+      radio.current!.startRecording(sink, seconds);
+    } catch (error) {
+      if (sink)
+        try {
+          await sink.abort();
+        } catch {}
+      if (!(error instanceof DOMException && error.name === "AbortError"))
+        setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecordPreparing(false);
+    }
   }
   async function toggleAudio() {
     if (playing) {
@@ -817,6 +865,16 @@ export default function App() {
                 </>
               )}
             </section>
+
+            <IqRecordingPanel
+              state={recording}
+              active={active}
+              busy={busy}
+              preparing={recordPreparing}
+              onStart={startRecording}
+              onStop={() => radio.current!.stopRecording()}
+              onClear={() => radio.current!.clearRecording()}
+            />
 
             <section className="panel decoder-panel">
               <div className="panel-title">
@@ -1337,7 +1395,8 @@ export default function App() {
           <PresetPanel
             settings={settings}
             source={source}
-            busy={busy}
+            busy={busy || recordLocked}
+            scanPaused={recordLocked}
             feed={nfmFeed}
             generation={armerGeneration}
             applied={appliedMonitor}

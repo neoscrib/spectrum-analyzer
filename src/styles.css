@@ -2347,3 +2347,75 @@ h1 {
   font: 10px var(--mono);
   padding: 2px 0 12px;
 }
+
+/* Full-rate IQ recording. */
+.iq-panel > .caption:first-of-type {
+  margin-bottom: 16px;
+}
+.iq-panel select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: #111820;
+  color: #dce4eb;
+  border-radius: 6px;
+  padding: 9px;
+  font-size: 12px;
+}
+.iq-panel .field-label {
+  margin-top: 14px;
+}
+.iq-storage-note {
+  margin: 10px 0 16px;
+}
+.iq-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.iq-progress strong {
+  color: #dce4eb;
+  font-size: 13px;
+}
+.iq-progress span {
+  font-family: var(--mono);
+}
+.iq-filename {
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.iq-downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.iq-downloads .button {
+  min-height: 34px;
+  font-size: 11px;
+}
+.iq-scope {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.iq-error {
+  color: #efad98;
+}
+.iq-rec-dot {
+  color: #ed897b;
+  fill: currentColor;
+  animation: iq-pulse 1.4s ease-in-out infinite;
+}
+@keyframes iq-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iq-rec-dot {
+    animation: none;
+  }
+}

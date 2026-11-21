@@ -24,6 +24,7 @@ let nfmSource = new NfmTestSignal();
 let armerPolicy: ArmerPolicy = { defaultListen: true, rules: [] };
 let revision = 0;
 let lastSpectrum = -Infinity;
+let recordingId = 0;
 let loading = Promise.resolve();
 function send(message: WorkerOut, transfer: Transferable[] = []) {
   postMessage(message, transfer);
@@ -61,9 +62,19 @@ function process(iq: Uint8Array) {
     power += ((iq[i] - 127.5) / 128) ** 2;
     if (iq[i] === 0 || iq[i] === 255) clipped++;
   }
+  const recording = recordingId
+    ? {
+        id: recordingId,
+        data:
+          iq.byteOffset === 0 && iq.byteLength === iq.buffer.byteLength
+            ? (iq.buffer as ArrayBuffer)
+            : iq.slice().buffer,
+      }
+    : undefined;
   send(
     {
       type: "processed",
+      recording,
       spectrum: fft,
       events,
       rms: 10 * Math.log10(power / (iq.length / 2) + 1e-12),
@@ -73,6 +84,7 @@ function process(iq: Uint8Array) {
       revision,
     },
     [
+      ...(recording ? [recording.data] : []),
       ...(fft ? [fft.buffer] : []),
       ...events.flatMap((e) => (e.type === "audio" ? [e.samples.buffer] : [])),
     ],
@@ -96,6 +108,9 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
           break;
         case "configure":
           configure(data.settings, data.revision, data.monitor);
+          break;
+        case "recording":
+          recordingId = data.id;
           break;
         case "nfm-hold":
           decoder?.setHold?.(data.id);

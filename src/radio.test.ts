@@ -289,3 +289,69 @@ it("releases the receiver when initialization fails and rejects invalid settings
   expect(device.close).toHaveBeenCalledOnce();
   expect(workers[0].terminate).toHaveBeenCalledOnce();
 });
+
+it("records returned IQ even across policy revisions, excludes stale capture IDs, and finalizes before tuning", async () => {
+  const { downloadSink } = await import("./recording/storage");
+  const session = new RadioSession();
+  const states: import("./recording/model").RecordingState[] = [];
+  session.onRecording = (state) => states.push(state);
+  await session.connect({ ...defaults, decoder: "armer", bandwidth: 12500 });
+  session.startRecording(downloadSink("test.cu8"), 0);
+  const worker = workers[0];
+  const command = worker.messages.find((m) => m.type === "recording" && m.id)!;
+  if (command.type !== "recording") throw Error("Missing capture command");
+  session.setArmerPolicy({ defaultListen: false, rules: [] });
+  const frame = {
+    type: "processed" as const,
+    events: [],
+    rms: -10,
+    clipping: 0,
+    elapsed: 1,
+    samples: 2,
+    revision: 0,
+  };
+  worker.onmessage?.({
+    data: {
+      ...frame,
+      recording: { id: command.id, data: new Uint8Array([1, 2, 3, 4]).buffer },
+    },
+  });
+  await session.stopRecording();
+  const result = states.at(-1)!;
+  expect(result.bytes).toBe(4);
+  expect(new Uint8Array(await result.blob!.arrayBuffer())).toEqual(
+    new Uint8Array([1, 2, 3, 4]),
+  );
+  session.startRecording(downloadSink("second.cu8"), 0);
+  worker.onmessage?.({
+    data: {
+      ...frame,
+      recording: { id: command.id, data: new Uint8Array([9, 9]).buffer },
+    },
+  });
+  const next = worker.messages
+    .filter((m) => m.type === "recording" && m.id)
+    .at(-1)!;
+  if (next.type !== "recording") throw Error("Missing capture command");
+  worker.onmessage?.({
+    data: {
+      ...frame,
+      recording: { id: next.id, data: new Uint8Array([5, 6]).buffer },
+    },
+  });
+  const updating = session.update({
+    ...defaults,
+    center: 101e6,
+    channel: 101.1e6,
+  });
+  await vi.waitFor(() => expect(states.at(-1)?.phase).toBe("complete"));
+  expect(states.at(-1)?.bytes).toBe(2);
+  expect(states.at(-1)?.info?.settings.center).toBe(defaults.center);
+  expect(states.at(-1)?.reason).toContain("configuration changed");
+  await pair();
+  await updating;
+  session.startRecording(downloadSink("third.cu8"), 0);
+  await stop(session);
+  expect(states.at(-1)?.phase).toBe("complete");
+  expect(states.at(-1)?.reason).toBe("Receiver stopped");
+});

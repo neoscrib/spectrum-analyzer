@@ -77,12 +77,16 @@ export type WorkerIn =
   | { type: "nfm-hold"; id: string | null; revision: number }
   | { type: "iq"; data: ArrayBuffer; revision: number }
   | { type: "test"; revision: number }
+  | { type: "recording"; id: number }
   | { type: "close" };
 export type WorkerOut =
   | { type: "ready" }
   | { type: "error"; message: string }
   | {
       type: "processed";
+      /** Original CU8 input returned only while recording; ownership transfers
+       * worker -> main -> recorder. Never detach or mutate it after enqueue. */
+      recording?: { id: number; data: ArrayBuffer };
       spectrum?: Float32Array;
       events: DecoderEvent[];
       rms: number;

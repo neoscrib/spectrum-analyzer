@@ -23,6 +23,7 @@ export const ookdecoder_process: (a: number, b: number, c: number) => void;
 export const ookdecoder_status: (a: number) => [number, number];
 export const ookdecoder_take_bursts: (a: number) => [number, number];
 export const receiver_audio_talkgroup: (a: number) => number;
+export const receiver_information: (a: number) => [number, number];
 export const receiver_new: (a: number, b: number, c: number) => [number, number, number];
 export const receiver_process: (a: number, b: number, c: number) => void;
 export const receiver_set_enabled: (a: number, b: number, c: number) => number;

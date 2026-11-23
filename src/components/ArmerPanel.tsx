@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 import { Download, Upload, Radio } from "lucide-react";
+import { ArmerInformation } from "./ArmerInformation";
 import {
   mergeAliases,
   resolver,
@@ -363,6 +364,13 @@ export function ArmerPanel({
         grants stay visible. CQPSK/LSM simulcast and Phase II voice are not
         supported; encrypted audio is muted.
       </p>
+      <ArmerInformation
+        information={feed.status?.information}
+        events={feed.events}
+        generation={generation}
+        test={test}
+        active={active}
+      />
       <div className="armer-tools">
         <label>
           Site name

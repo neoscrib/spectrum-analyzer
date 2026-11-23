@@ -1649,6 +1649,137 @@ h1 {
   flex-wrap: wrap;
   margin: 16px 0;
 }
+.armer-information {
+  margin: 18px 0;
+  min-width: 0;
+}
+.armer-information > details {
+  padding: 12px 0;
+}
+.armer-information > details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.armer-information > details > summary::before {
+  content: "▸";
+}
+.armer-information > details[open] > summary::before {
+  content: "▾";
+}
+.armer-information > details > summary span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.armer-system-summary {
+  padding: 6px 0 12px;
+}
+.armer-system-summary h4 {
+  margin: 18px 0 10px;
+  font-size: 12px;
+}
+.armer-system-summary h4 small {
+  margin-left: 8px;
+  color: var(--muted);
+  font-weight: normal;
+}
+.armer-system-summary dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.armer-system-summary dt,
+.armer-station-license > span {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.armer-system-summary dd {
+  margin: 0;
+  font: 11px var(--mono);
+  overflow-wrap: anywhere;
+}
+.armer-site-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 12px 0;
+}
+.armer-information .caption {
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 10px 0;
+}
+.armer-station-license {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 12px 0;
+}
+.armer-station-license > strong {
+  font: 11px var(--mono);
+}
+.armer-station-license > small {
+  font: 10px var(--mono);
+  color: var(--muted);
+}
+.armer-table-scroll {
+  overflow: auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 10px;
+}
+.armer-information table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11px/1.5 var(--mono);
+}
+.armer-information th,
+.armer-information td {
+  text-align: left;
+  white-space: nowrap;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.armer-information th {
+  font:
+    10px "DM Sans",
+    sans-serif;
+  color: var(--muted);
+  background: #151c23;
+}
+.armer-information .armer-table-text {
+  white-space: normal;
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+.armer-broadcast-table {
+  max-height: 320px;
+}
+.armer-broadcast-table th {
+  position: sticky;
+  top: 0;
+}
+.armer-panel .armer-raw-block {
+  padding: 0;
+  border: 0;
+}
+.armer-panel .armer-raw-block summary {
+  font-size: 10px;
+}
+.armer-raw-block[open] {
+  min-width: 200px;
+  max-width: 280px;
+}
+.armer-raw-block code {
+  display: block;
+  margin-top: 6px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .armer-tools > label:first-child {
   flex: 1 1 180px;
   color: var(--muted);

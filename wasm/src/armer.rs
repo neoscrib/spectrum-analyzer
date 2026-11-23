@@ -10,11 +10,27 @@ use p25::{
 use serde::Serialize;
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
+mod information;
 
 const FS: u64 = 0x5575F5FF77FF;
 const SIGN_SYNC: u32 = 0x04CF5F;
 const LEVELS: [f32; 4] = [-1800., -600., 600., 1800.];
 
+#[derive(Serialize, Clone, Debug)]
+pub struct StationIdentification {
+    pub callsign: String,
+    pub valid: bool,
+    pub channel: u16,
+    pub frequency: u32,
+}
+#[derive(Serialize, Clone, Debug)]
+pub struct ControlInformation {
+    pub opcode: u8,
+    pub mfid: u8,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub station: Option<StationIdentification>,
+}
 #[derive(Serialize, Clone, Default, Debug)]
 pub struct Event {
     pub kind: String,
@@ -32,6 +48,8 @@ pub struct Event {
     pub members: Vec<u16>,
     pub corrections: u32,
     pub time: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control: Option<ControlInformation>,
 }
 fn event(kind: &str, hz: u32) -> Event {
     Event {
@@ -435,6 +453,7 @@ pub struct Receiver {
     voices: Vec<ChannelDsp>,
     nid: NidDecoder,
     plan: IdenTable,
+    information: information::SystemState,
     ranks: Vec<usize>,
     patches: Vec<Patch>,
     events: Vec<Event>,
@@ -466,6 +485,7 @@ impl Receiver {
             voices: vec![],
             nid: NidDecoder::new(),
             plan: IdenTable::new(),
+            information: information::SystemState::default(),
             ranks: vec![usize::MAX; 65536],
             patches: vec![],
             events: vec![],
@@ -542,6 +562,10 @@ impl Receiver {
     pub fn stats(&self) -> String {
         serde_json::json!({"valid":self.valid,"invalid":self.invalid,"frames":self.frames,"voiceFrames":self.voice_frames,"channels":self.voices.len(),"seconds":self.samples as f64/self.rate as f64}).to_string()
     }
+    /// A current summary; frequencies are re-resolved after later band plans.
+    pub fn information(&self) -> String {
+        self.information.snapshot(self).to_string()
+    }
 }
 
 /// Deterministic CU8 C4FM fixture, not real radio traffic or intelligible speech.
@@ -570,8 +594,20 @@ impl ArmerTestSource {
             0x3d,
             ((100u64 << 51) | (180u64 << 42) | (50u64 << 32) | 170201250).to_be_bytes(),
         );
-        let site = fixture_block(0xba, [0, 0x04, 0x0f, 5, 75, 0x01, 0x4b, 0]);
-        let network = fixture_block(0xbb, [0, 0xbe, 0xe0, 0x74, 0x0f, 0x01, 0x4b, 0]);
+        let site = fixture_block(0xba, [0, 0x14, 0x0f, 5, 75, 0x01, 0x4b, 0]);
+        let network = fixture_block(0x3b, [0, 0xbe, 0xe0, 0x74, 0x0f, 0x01, 0x4b, 0]);
+        // MFID 0x90 / opcode 0x0B: eight six-bit characters, ASCII minus 43,
+        // independently packed as TEST123 + NULL, followed by channel 0x014B.
+        let mut station = fixture_block(0x0b, [0xa5, 0xaa, 0x29, 0x18, 0x72, 0, 0x01, 0x4b]);
+        station[1] = 0x90;
+        trellis::tsbk_seal(&mut station);
+        let iden1 = fixture_block(
+            0xbd,
+            ((1u64 << 60) | (100u64 << 51) | (376u64 << 42) | (50u64 << 32) | 152401250)
+                .to_be_bytes(),
+        );
+        let secondary = fixture_block(0x39, [5, 75, 0x01, 0xcb, 0x70, 0x01, 0xcb, 0]);
+        let neighbor = fixture_block(0xbc, [0, 0x34, 0x0f, 1, 6, 0, 233, 0x70]);
         let mut control = vec![];
         let mut voice = vec![];
         for (tg, channel, encrypted) in [
@@ -593,15 +629,18 @@ impl ArmerTestSource {
                     42,
                 ],
             );
-            let blocks = [iden, grant, site, network];
+            let blocks = [
+                iden, grant, site, network, station, iden1, secondary, neighbor,
+            ];
             let encoded: Vec<_> = blocks
                 .iter()
                 .map(|b| trellis::interleave(&trellis::trellis_encode(b)))
                 .collect();
-            // P25 TSDU supports up to three blocks per frame; emit network in a
+            // P25 TSDU supports up to three blocks per frame; emit broadcasts in a
             // second frame so all grants retain valid framing/status symbols.
             let mut c = frame::tsdu_frame_dibits(&sync, 0x40c, &encoded[..3]);
-            c.extend(frame::tsdu_frame_dibits(&sync, 0x40c, &encoded[3..]));
+            c.extend(frame::tsdu_frame_dibits(&sync, 0x40c, &encoded[3..6]));
+            c.extend(frame::tsdu_frame_dibits(&sync, 0x40c, &encoded[6..]));
             control.push(c);
             let mut body = sync.clone();
             body.extend(frame::nid_dibits(frame::nid_encode(0x40c, Duid::Ldu1)));
@@ -647,8 +686,12 @@ impl ArmerTestSource {
                     .collect()
             })
             .collect();
+        // Rotate fixture groups only between whole control cycles, so a clean
+        // source cannot change a grant halfway through its encoded CRC block.
+        let cycle_samples = self.control[0].len() * 500;
+        let phase_samples = (4800000 / cycle_samples).max(1) * cycle_samples;
         for _ in 0..count {
-            let phase = (self.samples / (2400000 * 2)) % 4;
+            let phase = (self.samples / phase_samples) % 4;
             let symbol = self.samples / 500;
             let dibits = [
                 self.control[phase][symbol % self.control[phase].len()],
@@ -726,6 +769,7 @@ impl Receiver {
         if t.protected {
             return;
         }
+        self.information.observe(&t, f.nac);
         if block[1] == 0x90 {
             let a = t.args;
             match t.opcode {
@@ -845,6 +889,23 @@ impl Receiver {
         e.nac = f.nac;
         e.corrections = correction + f.correction as u32;
         e.message = t.hex();
+        let station = match t.parse() {
+            TsbkKind::Motorola(p25::motorola::TsbkKind::BsiGrant { callsign, chan }) => {
+                Some(StationIdentification {
+                    callsign: callsign.text(),
+                    valid: callsign.is_valid(),
+                    channel: chan,
+                    frequency: self.plan.resolve(chan).map_or(0, |c| c.rx_hz as u32),
+                })
+            }
+            _ => None,
+        };
+        e.control = Some(ControlInformation {
+            opcode: t.opcode,
+            mfid: block[1],
+            text: frame::describe(&t, &self.plan),
+            station,
+        });
         self.emit(e);
     }
     fn grant(&mut self, channel: u16, tg: u16, source: u32, encrypted: Option<bool>) {
@@ -1032,6 +1093,148 @@ mod tests {
         assert_eq!(r.valid, 0);
         assert_eq!(r.invalid, 3);
         assert!(!r.events.iter().any(|e| e.kind == "site"));
+    }
+    fn station_block(field: [u8; 6]) -> [u8; 12] {
+        let mut b = block(0x8b, [0, 0, 0, 0, 0, 0, 0x01, 0x4b]);
+        b[1] = 0x90;
+        b[2..8].copy_from_slice(&field);
+        trellis::tsbk_seal(&mut b);
+        b
+    }
+    #[test]
+    fn station_identification_requires_a_clear_crc_valid_motorola_block() {
+        // Independent wire vector: TEST123 + NULL, 6-bit characters (ASCII - 43).
+        let b = station_block([0xa5, 0xaa, 0x29, 0x18, 0x72, 0]);
+        let mut r = with_plan();
+        feed_dibits(&mut r, &frame_for(&[b]));
+        let control = r.events.iter().find_map(|e| e.control.as_ref()).unwrap();
+        let station = control.station.as_ref().unwrap();
+        assert_eq!(station.callsign, "TEST123");
+        assert!(station.valid);
+        assert_eq!(station.channel, 0x014b);
+        assert_eq!(station.frequency, 853075000);
+        assert!(control.text.contains("TEST123"));
+        assert!(
+            r.voices.is_empty(),
+            "A station ID must never trigger voice following"
+        );
+
+        let mut bad_crc = b;
+        bad_crc[4] ^= 1;
+        let mut other_vendor = b;
+        other_vendor[1] = 0xa4;
+        trellis::tsbk_seal(&mut other_vendor);
+        let mut protected = b;
+        protected[0] |= 0x40;
+        trellis::tsbk_seal(&mut protected);
+        for bytes in [bad_crc, other_vendor, protected] {
+            let mut r = with_plan();
+            feed_dibits(&mut r, &frame_for(&[bytes]));
+            assert!(!r.events.iter().any(|e| {
+                e.control
+                    .as_ref()
+                    .and_then(|c| c.station.as_ref())
+                    .is_some()
+            }));
+            let summary: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+            assert!(summary["station"].is_null());
+        }
+    }
+    #[test]
+    fn system_summary_resolves_announcements_after_their_band_plan_arrives() {
+        let mut r = Receiver::new(852400000, 853075000, 2400000).unwrap();
+        let network = block(0xbb, [0, 0xbe, 0xe0, 0x74, 0x0f, 0x01, 0x4b, 0]);
+        let site = block(0xba, [0, 0x14, 0x0f, 5, 75, 0x01, 0x4b, 0]);
+        let neighbor = block(0xbc, [0, 0x34, 0x0f, 1, 6, 0, 233, 0x70]);
+        let secondary = block(0xb9, [5, 75, 0x01, 0xcb, 0x70, 0x01, 0xcb, 0]);
+        for b in [network, site, neighbor, secondary] {
+            feed_dibits(&mut r, &frame_for(&[b]));
+        }
+        let before: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+        assert!(before["primary"]["downlink"].is_null());
+        assert_eq!(before["network"]["lra"], 0);
+        assert_eq!(before["site"]["flags"], 1);
+        assert_eq!(before["neighbors"][0]["flags"], 3);
+        let iden = block(
+            0xbd,
+            ((100u64 << 51) | (180u64 << 42) | (50u64 << 32) | 170201250).to_be_bytes(),
+        );
+        feed_dibits(&mut r, &frame_for(&[iden]));
+        let after: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+        assert_eq!(after["network"]["wacn"], 0xbee07);
+        assert_eq!(after["site"]["site"], 75);
+        assert_eq!(
+            after["primary"],
+            serde_json::json!({"id":331,"downlink":853075000,"uplink":808075000})
+        );
+        assert_eq!(
+            after["secondary"][0],
+            serde_json::json!({"id":459,"downlink":853875000,"uplink":808875000})
+        );
+        assert_eq!(
+            after["secondary"].as_array().unwrap().len(),
+            1,
+            "Absent second SCC entry must not be invented"
+        );
+        assert_eq!(
+            after["neighbors"][0]["control"],
+            serde_json::json!({"id":233,"downlink":852462500,"uplink":807462500})
+        );
+        // Updating the same neighboring site replaces its row, not its identity.
+        let neighbor = block(0xbc, [3, 0x14, 0x0f, 1, 6, 0, 231, 0x70]);
+        feed_dibits(&mut r, &frame_for(&[neighbor]));
+        let after: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+        assert_eq!(after["neighbors"].as_array().unwrap().len(), 1);
+        assert_eq!(after["neighbors"][0]["lra"], 3);
+        assert_eq!(after["neighbors"][0]["control"]["downlink"], 852450000);
+    }
+    #[test]
+    fn summary_explicit_uplink_and_active_patches_are_not_guessed() {
+        let mut r = with_plan();
+        let site = block(0xba, [0, 0x14, 0x0f, 5, 75, 0x01, 0x4b, 0]);
+        let explicit = block(0xa9, [5, 75, 0x01, 0xcb, 0, 0xff, 0xff, 0x70]);
+        for b in [site, explicit] {
+            feed_dibits(&mut r, &frame_for(&[b]));
+        }
+        r.patches.push(Patch {
+            group: 65000,
+            members: vec![6620, 6640],
+            expires: r.samples + r.rate as u64 * 20,
+        });
+        let snapshot: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+        assert_eq!(snapshot["secondary"][0]["downlink"], 853875000);
+        assert!(
+            snapshot["secondary"][0]["uplink"].is_null(),
+            "Explicit no-uplink sentinel cannot fall back to the implicit offset"
+        );
+        assert_eq!(
+            snapshot["patches"][0]["members"],
+            serde_json::json!([6620, 6640])
+        );
+        r.samples += r.rate as u64 * 21;
+        let expired: serde_json::Value = serde_json::from_str(&r.information()).unwrap();
+        assert!(expired["patches"].as_array().unwrap().is_empty());
+    }
+    #[test]
+    fn station_identification_keeps_empty_and_invalid_characters_distinct() {
+        for (field, valid) in [([0; 6], true), ([0xff, 0, 0, 0, 0, 0], false)] {
+            let mut r = Receiver::new(852400000, 853075000, 2400000).unwrap();
+            feed_dibits(&mut r, &frame_for(&[station_block(field)]));
+            let station = r
+                .events
+                .iter()
+                .find_map(|e| e.control.as_ref()?.station.as_ref())
+                .unwrap();
+            assert_eq!(station.valid, valid);
+            if valid {
+                assert!(station.callsign.is_empty());
+            }
+            assert_eq!(
+                station.frequency, 0,
+                "No invented frequency without a band plan"
+            );
+            assert_eq!(station.channel, 0x014b);
+        }
     }
     #[test]
     fn muted_and_encrypted_calls_never_allocate_voice() {

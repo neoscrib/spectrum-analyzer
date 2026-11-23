@@ -32,6 +32,17 @@ export interface P25Event {
   members: number[];
   corrections: number;
   time: number;
+  control?: {
+    opcode: number;
+    mfid: number;
+    text: string;
+    station?: {
+      callsign: string;
+      valid: boolean;
+      channel: number;
+      frequency: number;
+    };
+  };
 }
 export interface P25Stats {
   valid: number;
@@ -45,6 +56,45 @@ export interface ArmerStatus extends P25Stats {
   audioTalkgroup: number;
   controlLocked: boolean;
   quality: ControlQuality;
+  information?: SystemInformation;
+}
+export interface ControlChannel {
+  id: number;
+  downlink: number | null;
+  uplink: number | null;
+}
+export interface SystemSite {
+  system: number;
+  nac: number;
+  rfss: number;
+  site: number;
+  lra: number;
+  flags: number;
+  channel: number;
+  control: ControlChannel;
+}
+export interface SystemInformation {
+  network: {
+    wacn: number;
+    system: number;
+    nac: number;
+    lra: number;
+    channel: number;
+  } | null;
+  site: SystemSite | null;
+  primary: ControlChannel | null;
+  secondary: ControlChannel[];
+  neighbors: SystemSite[];
+  bands: {
+    id: number;
+    base: number;
+    bandwidth: number;
+    spacing: number;
+    offset: number;
+    slots: number;
+  }[];
+  patches: { group: number; members: number[]; expiresIn: number }[];
+  station: { callsign: string; valid: boolean; control: ControlChannel } | null;
 }
 export interface ArmerFeed {
   status: ArmerStatus | null;

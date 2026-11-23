@@ -59,6 +59,10 @@ export class Receiver {
     free(): void;
     [Symbol.dispose](): void;
     audio_talkgroup(): number;
+    /**
+     * A current summary; frequencies are re-resolved after later band plans.
+     */
+    information(): string;
     constructor(center: number, control: number, rate: number);
     process(iq: Uint8Array | number[]): void;
     /**
@@ -121,6 +125,7 @@ export interface InitOutput {
     readonly ookdecoder_status: (a: number) => [number, number];
     readonly ookdecoder_take_bursts: (a: number) => [number, number];
     readonly receiver_audio_talkgroup: (a: number) => number;
+    readonly receiver_information: (a: number) => [number, number];
     readonly receiver_new: (a: number, b: number, c: number) => [number, number, number];
     readonly receiver_process: (a: number, b: number, c: number) => void;
     readonly receiver_set_enabled: (a: number, b: number, c: number) => number;

@@ -15,6 +15,7 @@ import {
   type ArmerPolicy,
   type P25Event,
   type P25Stats,
+  type SystemInformation,
 } from "../armer/model";
 
 /** A worker-owned instance, recreated on configuration/revision changes.
@@ -50,6 +51,8 @@ export const factories: Record<
       lastAudioTalkgroup = 0;
     let valid = 0,
       lastValidSeconds = -Infinity;
+    let information: SystemInformation | undefined,
+      lastInformation = -Infinity;
     setPolicy(policy);
     return {
       process(iq, firstSample) {
@@ -83,6 +86,10 @@ export const factories: Record<
           lastAudioTalkgroup = talkgroup;
         }
         const stats: P25Stats = JSON.parse(native.stats());
+        if (firstSample - lastInformation >= 480000) {
+          information = JSON.parse(native.information());
+          lastInformation = firstSample;
+        }
         if (stats.valid > valid) {
           valid = stats.valid;
           lastValidSeconds = stats.seconds;
@@ -92,6 +99,7 @@ export const factories: Record<
           protocol: "armer",
           status: {
             ...stats,
+            information,
             quality: quality.update(stats),
             controlLocked:
               stats.valid > 0 && stats.seconds - lastValidSeconds < 2,

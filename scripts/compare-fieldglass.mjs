@@ -38,7 +38,9 @@ function compare(name, center, chunks) {
     baseline = JSON.parse(original.stats());
   assert.deepEqual(stats, baseline, `${name}: receiver counters differ`);
   assert.deepEqual(
-    localEvents,
+    // Local control messages now add a readable description and BSI fields.
+    // Compare every original field to Fieldglass; check enrichment separately.
+    localEvents.map(({ control, ...original }) => original),
     referenceEvents,
     `${name}: decoded protocol messages differ`,
   );

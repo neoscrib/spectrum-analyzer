@@ -48,6 +48,36 @@ assert(
   ),
 );
 assert(events.some((e) => e.kind === "network" && e.wacn === 0xbee07));
+const stationId = events.find((e) => e.control?.station)?.control;
+assert.equal(stationId?.mfid, 0x90);
+assert.equal(stationId?.opcode, 0x0b);
+assert.deepEqual(stationId?.station, {
+  callsign: "TEST123",
+  valid: true,
+  channel: 0x014b,
+  frequency: 853075000,
+});
+assert(events.some((e) => e.control?.text.includes("NET_STS")));
+const information = JSON.parse(receiver.information());
+assert.deepEqual(information.primary, {
+  id: 331,
+  downlink: 853075000,
+  uplink: 808075000,
+});
+assert.deepEqual(information.secondary, [
+  { id: 459, downlink: 853875000, uplink: 808875000 },
+]);
+assert.deepEqual(information.neighbors[0].control, {
+  id: 233,
+  downlink: 852462500,
+  uplink: 807462500,
+});
+assert.equal(information.site.flags, 1);
+assert.equal(information.neighbors[0].flags, 3);
+assert.equal(information.network.lra, 0);
+assert.equal(information.bands.length, 2);
+assert.equal(information.bands[1].base, 762006250);
+assert.equal(information.bands[1].offset, 30000000);
 assert(events.some((e) => e.talkgroup === 6670 && e.encrypted === true));
 assert(
   events.some(

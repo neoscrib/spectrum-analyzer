@@ -51,6 +51,48 @@ try {
   });
   await expect(page.getByText("40F / BEE07", { exact: true })).toBeVisible();
   await expect(page.getByText("5 / 75 · 40C", { exact: true })).toBeVisible();
+  const summary = page.getByTestId("armer-system-summary");
+  await expect(summary).toBeHidden();
+  await page.getByText("System summary", { exact: true }).click();
+  await expect(summary).toContainText("BEE07 [781831]");
+  await expect(summary).toContainText("40F [1039]");
+  await expect(summary).toContainText("4B [75]");
+  await expect(summary).toContainText("00 [0]");
+  await expect(
+    page.getByRole("table", { name: "Site control channels" }),
+  ).toContainText("808.075000");
+  await expect(
+    page.getByRole("table", { name: "Site control channels" }),
+  ).toContainText("853.875000");
+  await expect(
+    page.getByRole("table", { name: "Neighbor sites" }),
+  ).toContainText("852.462500");
+  await expect(
+    page.getByRole("table", { name: "Neighbor sites" }),
+  ).toContainText("Active RFSS connection");
+  await expect(
+    page.getByRole("table", { name: "Frequency bands" }),
+  ).toContainText("762.006250");
+  await expect(page.getByTestId("armer-callsign")).toHaveText("TEST123");
+  await expect(page.getByTestId("armer-identification-channel")).toContainText(
+    "853.07500 MHz · 0-331 · 0x014B",
+  );
+  const broadcasts = page.getByRole("table", {
+    name: "System broadcast messages",
+  });
+  await expect(broadcasts).toBeHidden();
+  await page.getByText("System broadcasts", { exact: true }).click();
+  await expect(broadcasts).toBeVisible();
+  await expect(broadcasts).toContainText("NET_STS");
+  await expect(broadcasts.locator("tbody tr")).toHaveCount(7);
+  await page.getByText("System broadcasts", { exact: true }).click();
+  await expect(broadcasts).toBeHidden();
+  await expect(
+    page.getByRole("region", {
+      name: "Control-channel information",
+      exact: true,
+    }),
+  ).toContainText("NET_STS");
   await expect(page.getByTestId("armer-quality")).toContainText(
     "0.0% rejected",
   );
@@ -79,6 +121,7 @@ try {
   ).not.toBeChecked();
   await expect.poll(rms, { timeout: 5000 }).toBeLessThan(0.000001);
   await expect.poll(valid).toBeGreaterThan(beforeMute);
+  await expect(page.getByTestId("armer-callsign")).toHaveText("TEST123");
   // One explicit enabled ID with unlisted groups disabled.
   await page.getByLabel("Listen to 6620", { exact: true }).check();
   await expect.poll(rms, { timeout: 12000 }).toBeGreaterThan(0.00001);

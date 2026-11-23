@@ -37,7 +37,7 @@ ARMER P25 Phase I decoder adapted from the user-provided armer/web project.
 sdr-p25 0.1.0, sdr-fec 0.1.0, sdr-stream 1.9.0 — MIT OR Apache-2.0
 libm 0.2.16 — MIT
 MIT texts selected and included by package/version. sdr-p25 provenance included.
-@xmldom/xmldom 0.9.12 — MIT (local server SOAP parsing only).
+@xmldom/xmldom 0.9.12 — MIT (development-only SDRTrunk XML tests).
 SDRTrunk source was used to verify playlist interchange and the Motorola base
 station ID wire layout; its code is not bundled. BSI decoding and readable
 control descriptions use the existing MIT-licensed sdr-p25 crate.

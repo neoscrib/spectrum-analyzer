@@ -1,9 +1,8 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { radioReferencePlugin } from "./server/radioreference.ts";
 import { VitePWA } from "vite-plugin-pwa";
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   worker: { format: "es" },
   plugins: [
     react(),
@@ -57,22 +56,19 @@ export default defineConfig(({ mode }) => ({
       },
       devOptions: { enabled: false },
     }),
-    radioReferencePlugin(
-      process.env.RR_APP_KEY ||
-        loadEnv(mode, process.cwd(), "RR_").RR_APP_KEY ||
-        "",
-    ),
   ],
   server: {
     host: "127.0.0.1",
     port: 5176,
+    proxy: { "/api": { target: "http://127.0.0.1:8081", changeOrigin: false } },
     strictPort: true,
     headers: { "Permissions-Policy": "usb=(self)" },
   },
   preview: {
     host: "127.0.0.1",
     port: 5177,
+    proxy: { "/api": { target: "http://127.0.0.1:8081", changeOrigin: false } },
     strictPort: true,
     headers: { "Permissions-Policy": "usb=(self)" },
   },
-}));
+});

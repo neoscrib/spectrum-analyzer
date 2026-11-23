@@ -17,7 +17,7 @@
     "test:browser:armer": "node scripts/browser-armer-check.mjs",
     "test:fieldglass": "node scripts/compare-fieldglass.mjs",
     "test:usb": "node scripts/browser-usb-check.mjs",
-    "check": "npm test && npm run test:wasm && npm run build",
+    "check": "npm test && npm run test:api && npm run test:wasm && npm run build",
     "test:browser:ook": "node scripts/browser-ook-check.mjs",
     "test:browser:recording": "node scripts/browser-recording-check.mjs",
     "build:rtl433": "bash scripts/build-rtl433.sh",
@@ -26,13 +26,14 @@
     "test:browser:armer-auto-center": "node scripts/browser-armer-auto-center-check.mjs",
     "test:browser:modules": "node scripts/browser-modules-check.mjs",
     "app": "npm run build && vite preview --port 5177",
-    "test:browser:pwa": "node scripts/browser-pwa-check.mjs"
+    "test:browser:pwa": "node scripts/browser-pwa-check.mjs",
+    "api": "cd backend && go run .",
+    "test:api": "cd backend && go test ./..."
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@jtarrio/webrtlsdr": "3.0.7",
-    "@xmldom/xmldom": "^0.9.12",
     "lucide-react": "1.76.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -44,6 +45,7 @@
     "@types/react-dom": "19.3.0",
     "@types/w3c-web-usb": "1.0.14",
     "@vitejs/plugin-react": "6.3.0",
+    "@xmldom/xmldom": "0.9.12",
     "typescript": "7.0.2",
     "vite": "8.3.8",
     "vite-plugin-pwa": "2.0.0",

@@ -7,7 +7,7 @@ npm ci
 npm run dev
 ```
 
-Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. Development uses port 5176; the installable production app uses port 5177. Both servers bind to loopback and avoid the reference apps. Generated WASM is included; normal use requires Node/npm, not Rust. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
+Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. Development uses port 5176; the installable production app uses port 5177. Both servers bind to loopback and avoid the reference apps. Generated WASM is included; normal frontend development requires Node/npm, not Rust; optional alias lookup also uses Go 1.26+. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
 
 ## Install and use offline
 
@@ -23,9 +23,31 @@ Updates download in the background and wait. **Install app / App → Update and 
 
 The development server remains at **5176** and does not register a service worker; preview defaults to **5177** to keep offline production caches away from HMR. To rebuild and serve an update, rerun `npm run app`; an already built app can be served with `npm run preview`. Both servers bind to loopback. Browser settings and USB permissions belong to the exact origin: `localhost` and `127.0.0.1`, or different ports, have separate storage. To retain existing development-origin preferences when installing, stop the development server and run `npm run preview -- --port 5176`, opening it with the same hostname you used before. Return to the dedicated development origin for HMR, or unregister the production service worker in browser developer tools before reusing that origin for development.
 
-For HTTPS hosting, serve the contents of `dist/` at the origin root. Use revalidation/no-cache headers for `sw.js` and `index.html`; hashed assets may be cached immutably. Static hosting supports all local radio features; the optional `/api/armer/aliases` endpoint needs its own server. The plugin uses `injectManifest` and `registerType: "prompt"`; its [offline precache configuration](https://vite-pwa-org.netlify.app/guide/service-worker-precache) explicitly includes WASM, nested workers, fonts and public license/source files. Manifest/installation requirements are described by [Chrome's installation guide](https://web.dev/articles/install-criteria), and updates follow the [service worker lifecycle](https://web.dev/articles/service-worker-lifecycle).
+For HTTPS hosting, serve the contents of `dist/` at the origin root. Use revalidation/no-cache headers for `sw.js` and `index.html`; hashed assets may be cached immutably. Static hosting supports all local radio features; the optional `/api/armer/aliases` endpoint is provided by the Go API. The plugin uses `injectManifest` and `registerType: "prompt"`; its [offline precache configuration](https://vite-pwa-org.netlify.app/guide/service-worker-precache) explicitly includes WASM, nested workers, fonts and public license/source files. Manifest/installation requirements are described by [Chrome's installation guide](https://web.dev/articles/install-criteria), and updates follow the [service worker lifecycle](https://web.dev/articles/service-worker-lifecycle).
 
 `npm run test:browser:pwa` starts its own temporary production server and a disposable, non-incognito Chrome profile. It checks Chrome installability, all decoder files, server-stopped/offline cold starts for every decoder, real AudioWorklet playback, offline IQ recording, browser restart without a server, mobile/desktop layouts, API cache exclusion, deferred updates, multiple-window protection, and retry after a failed decoder download. It never installs into your personal browser profile or accesses USB hardware.
+
+## Docker and GHCR
+
+```sh
+# Set RR_APP_KEY in .env.local (see .env.example), then:
+docker compose --env-file .env.local up --build
+```
+
+Open **http://localhost:8080**. Compose runs nginx for the production app and a small Go API for RadioReference. Only nginx is exposed to the host; `/api/` is forwarded over the private Docker network. The application key is injected into Go at runtime, not baked into either image or the browser bundle. Each user supplies their own RadioReference Premium login when requesting aliases. Without a key, radio reception and saved/manual aliases still work; lookup stays unconfigured. Omit `--env-file .env.local` to start without a key file.
+
+The checked-in WASM artifacts are used directly; Rust and Emscripten are not needed for image builds. The RTL-SDR connects to the computer running the browser through WebUSB. Put nginx behind HTTPS for remote access. nginx revalidates HTML and the service worker, caches hashed assets for a year, serves WASM/manifest MIME types, and returns 404 for missing assets. If the API is stopped, the app remains usable and lookup returns a clear error.
+
+For local development, start `RR_APP_KEY=your-key npm run api` in another terminal. The Go service listens on `127.0.0.1:8081` by default (`LISTEN_ADDR` overrides it); Vite development and preview proxy `/api` there. The Go API uses only the standard library. It preserves the existing `GET /api/armer/aliases` configuration check and `POST /api/armer/aliases` credential/alias JSON contract. Upstream access is fixed to the RadioReference HTTPS SOAP endpoint and ARMER system 3508. Requests time out, bodies are bounded, credentials are never logged or cached, and errors do not echo upstream payloads. Saved aliases remain available offline.
+
+RadioReference's SOAP endpoint currently returns no CORS permission headers for the browser's XML/SOAP preflight (checked November 23, 2026), so these calls use the same-origin Go proxy. There is one SOAP implementation; the former Node/Vite middleware has been removed.
+
+`.github/workflows/publish.yml` builds both images on **master** pushes or manual runs, using the built-in `GITHUB_TOKEN` with `packages: write`:
+
+- `ghcr.io/neoscrib/spectrum-analyzer` — nginx and the app
+- `ghcr.io/neoscrib/spectrum-analyzer-api` — Go API, a static binary and CA certificates
+
+Each image receives `latest` and full commit-SHA tags. After publishing, use `docker compose --env-file .env.local pull` followed by `docker compose --env-file .env.local up -d --no-build`. Authenticate with `docker login ghcr.io` first if the packages are private. A frontend-only image can still run on its own; lookup requires the Go service.
 
 ## Receive and decode
 
@@ -148,7 +170,7 @@ Control demodulation and CRC candidate selection match the Fieldglass reference 
 
 USB reads are continuously replenished: each completed transfer is replaced before its IQ is dispatched, without waiting for the other transfer to complete. Results remain in request order. Hardware configuration temporarily drains the remaining reads, applies tuning/gain, resets the endpoint and decoder, and resumes. Stop drains outstanding transfers before releasing USB. Tests cover immediate refill, ordered delivery, tuning boundaries, overload, and unplugging. These transport behaviors are covered by automated tests; live reception was subsequently confirmed by the user as described below.
 
-**Alias directory → RadioReference** optionally retrieves ARMER system 3508 aliases. RadioReference's [official API requirements](https://support.radioreference.com/hc/en-us/articles/18844460198932-Database-Web-Service-API) require an approved developer application key and a Premium account. Set `RR_APP_KEY` in `.env.local` (see `.env.example`), restart `npm run dev` or `npm run preview`, and reload. Enter your RadioReference username/password in the panel. The application key stays on the local server; credentials travel over HTTPS to RadioReference, are cleared after each request, and are not persisted. Returned aliases preserve custom/imported names and listen choices. SOAP parsing and the browser flow are tested with mocked responses; **authenticated upstream lookup has not been verified without credentials**. Static-only hosting needs a compatible local API server to enable this optional lookup. Manual aliases and playlist import/export work offline.
+**Alias directory → RadioReference** optionally retrieves ARMER system 3508 aliases. RadioReference's [official API requirements](https://support.radioreference.com/hc/en-us/articles/18844460198932-Database-Web-Service-API) require an approved developer application key and a Premium account. Set `RR_APP_KEY` on the Go API (see the Docker/local API instructions above), start it, and reload. Enter your RadioReference username/password in the panel. The application key stays on the API server; credentials travel over HTTPS to RadioReference, are cleared after each request, and are not persisted. Returned aliases preserve custom/imported names and listen choices. SOAP parsing and the browser flow are tested with mocked responses; **authenticated upstream lookup has not been verified without credentials**. Static-only hosting needs the Go API behind a same-origin `/api` proxy to enable this optional lookup. Manual aliases and playlist import/export work offline.
 
 **Try ARMER test signal** creates CU8 C4FM IQ containing CRC-valid control/site/network, neighbor/secondary channels, two band plans and TEST123 base-station ID messages, two clear groups, an encrypted grant, and an out-of-band grant. It runs through the real WASM demodulator/FEC/IMBE decoder and AudioWorklet. Its vocoder frames are test data, not intelligible speech or received traffic. Tests verify only clear enabled groups produce PCM, muted groups still appear in control events, and the exported XML round-trips the full 1–65535 policy. The 20-second RF recording from the reference project produces **41 valid / 133 rejected control candidates in both built decoders**, with identical protocol events: system **40F**, WACN **BEE07**, RFSS/site **5/75**, NAC **40C**. This old recording contains poor RF and is not a measurement of current live reception. It has no usable voice grants. Clean generated IQ at both tested center frequencies produces **48 valid / 0 rejected** over 1.25 seconds in each decoder. **Live ARMER reception and audible voice playback were confirmed by the user on November 20, 2026**, after the transport and Fieldglass-parity changes. The working settings were center **853.850 MHz**, control **853.075 MHz**, manual gain **22.9 dB**, and **0 PPM**. Reported counters were **4,447 valid / 7 rejected** (approximately **0.16%** rejected overall), with **40.0 valid blocks/s** and **0.0% rejected** in the latest five-second window. This confirms the live WebUSB → WASM P25/IMBE → browser audio path; it does not establish which individual change accounted for the improvement.
 
@@ -218,11 +240,12 @@ Composition uses JavaScript's block-level adapter calls: CU8 2.4 MSPS enters the
 
 ```sh
 npm test                 # Tuning/FFT mapping, USB lifecycle and failures, audio resampling
+npm run test:api         # Go SOAP/HTTP, bounds, origin checks and credential handling
 npm run test:wasm        # Native tests, isolated-module exports and actual WASM decoding
 npm run test:browser:modules # Per-decoder runtime loading (offline precaching disabled), worker disposal
 npm run test:browser:pwa # Self-hosted installability, offline cold decoders/audio, update and retry checks
 npm run build            # Strict TypeScript and production build
-npm run check            # Unit tests, native/actual WASM checks, and production build
+npm run check            # Frontend/API tests, native/actual WASM checks, and production build
 npm run test:browser     # WFM regression; dev or preview server must be running
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls

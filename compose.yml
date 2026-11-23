@@ -1,0 +1,15 @@
+services:
+  web:
+    image: ghcr.io/neoscrib/spectrum-analyzer:latest
+    build: .
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - api
+  api:
+    image: ghcr.io/neoscrib/spectrum-analyzer-api:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      RR_APP_KEY: ${RR_APP_KEY:-}

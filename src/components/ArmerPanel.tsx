@@ -631,7 +631,7 @@ export function ArmerPanel({
         <summary>Alias directory · RadioReference</summary>
         <p className="caption">
           Optional lookup for ARMER system 3508. Requires a RadioReference
-          Premium account and an approved application key on the local server.
+          Premium account and an approved application key on the API server.
           Aliases already work offline, and custom names and listen choices are
           preserved.
         </p>
@@ -665,8 +665,8 @@ export function ArmerPanel({
           </form>
         ) : (
           <p className="caption">
-            To enable lookup, set <code>RR_APP_KEY</code> in{" "}
-            <code>.env.local</code> and restart the server. See{" "}
+            To enable lookup, set <code>RR_APP_KEY</code> for the Go API and
+            restart it. See{" "}
             <a
               href="https://support.radioreference.com/hc/en-us/articles/18844460198932-Database-Web-Service-API"
               target="_blank"
@@ -678,7 +678,7 @@ export function ArmerPanel({
           </p>
         )}
         <p className="caption">
-          Lookup sends your login to RadioReference through this local server.
+          Lookup sends your login to RadioReference through this app’s server.
           Credentials are cleared after each request and are never saved in
           browser storage.
         </p>

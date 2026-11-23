@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+dist
+artifacts
+wasm/target
+.env
+.env.*
+*.log

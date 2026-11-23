@@ -60,7 +60,7 @@ Select **Decode as… → AM · amplitude modulation**, tune the desired channel
 
 The current tuner path remains 24–1766 MHz; selecting AM does not add lower-frequency reception. **Try AM test signal** generates a 1 kHz AM station at **120.100 MHz**, with a neighboring 3 kHz AM station at **120.140 MHz**, captured around 120.000 MHz. This is explicitly labeled synthetic data and uses the actual WASM and AudioWorklet. Select the neighboring carrier to hear its different tone.
 
-`wasm/src/am.rs` supplies a shared AM channelizer/envelope detector. Standalone `AmDecoder` emits only audio; `WwvDecoder` uses the identical demodulator and additionally feeds its 100 Hz protocol decoder. Rust tests verify both tuning-offset signs, adjacent-channel rejection, channel-width filtering, mono output, and arbitrary IQ chunk boundaries. Browser tests measure rendered audio, select the neighboring station, retune across the center, and check volume/pause/stop and responsive layout.
+`dsp_core_bg.wasm` supplies the shared high-rate channelizer; `wasm/src/am.rs` supplies the common AM envelope detector source. Standalone `AmDecoder` emits only audio; `WwvDecoder` uses the identical demodulator and additionally feeds its 100 Hz protocol decoder. Rust tests verify both tuning-offset signs, adjacent-channel rejection, channel-width filtering, mono output, and arbitrary IQ chunk boundaries. Browser tests measure rendered audio, select the neighboring station, retune across the center, and check volume/pause/stop and responsive layout.
 
 ## NFM, frequency presets, and scanning
 
@@ -100,7 +100,7 @@ Keep the newest **100 bursts** in memory, inspect older bursts while acquisition
 
 ## ARMER / P25 Phase I
 
-Select **Decode as… → ARMER · P25 Phase I**. This reuses the C4FM trunking and IMBE pipeline from `../armer/web`, compiled into the shared WASM module with `sdr-p25` 0.1.0. The starting site is **Ogilvie 5-75**, control **853.075 MHz**, captured around **852.400 MHz**. The saved alternate **853.875 MHz** can be selected manually; automatic control-channel rotation is not implemented. You can enter another control frequency, adjust the hardware center, and save that frequency. Display span only zooms the FFT; voice following uses the full 2.4 MHz capture.
+Select **Decode as… → ARMER · P25 Phase I**. This reuses the C4FM trunking and IMBE pipeline from `../armer/web`, compiled into its own lazily loaded `armer_bg.wasm` module with `sdr-p25` 0.1.0. The starting site is **Ogilvie 5-75**, control **853.075 MHz**, captured around **852.400 MHz**. The saved alternate **853.875 MHz** can be selected manually; automatic control-channel rotation is not implemented. You can enter another control frequency, adjust the hardware center, and save that frequency. Display span only zooms the FFT; voice following uses the full 2.4 MHz capture.
 
 Connect the receiver and press **Play audio**. The decoder learns broadcast channel plans, reports CRC-validated system/WACN/NAC/RFSS/site data, follows one enabled clear voice call inside the capture, and converts 8 kHz IMBE PCM to 48 kHz mono in both speakers. All nonzero talkgroup IDs, including unknown IDs, listen by default with equal priority. An already selected call is not preempted merely because another ID is numerically smaller. Calls outside the current capture remain visible in Now Playing. Auto-centering can bring them into range when a shared capture window can also retain the control channel. **CQPSK/LSM simulcast, Phase II voice, and encrypted audio are not supported.** Unknown encryption state is withheld until confirmed clear. Listen toggles apply to the actual transmitted group ID; a patched member does not override a muted group.
 
@@ -148,7 +148,7 @@ NIST's [25 MHz WWV broadcast](https://www.nist.gov/pml/time-and-frequency-divisi
 
 Validated: the full generated IQ path confirms the expected UTC/date/DUT1 in Chrome, AM audio plays at 1×, corrupt position markers are rejected, and noise or an unpulsed 100 Hz tone does not create a timestamp. The actual WASM also passes NIST's published example (2001/day173/21:10/+0.3), arbitrary starting phase, stream boundaries, loss of synchronization, and WFM regression checks. **Live over-the-air WWV reception has not yet been verified.**
 
-The shared Rust `Downconverter`/FIR primitives serve WFM, AM, OOK/ASK, and WWV; AM and WWV additionally share the envelope detector in `wasm/src/am.rs`. WWV uses two-stage complex filtering/decimation (2.4 MSPS → 240 kHz → 48 kHz), envelope AM detection with slow carrier normalization, then quadrature 100 Hz recovery and pulse/frame validation. Its offline `process_audio()` entry accepts centered AM audio at 48 kHz for protocol tests; it does not bypass IQ processing in the app's generated-source/browser test.
+The shared runtime `dsp_core_bg.wasm` channelizer serves WFM, AM, OOK/ASK, WWV, and rtl_433; small FIR helpers share Rust source in `wasm/src/dsp.rs`, AM and WWV additionally share the envelope detector in `wasm/src/am.rs`. WWV uses two-stage complex filtering/decimation (2.4 MSPS → 240 kHz → 48 kHz), envelope AM detection with slow carrier normalization, then quadrature 100 Hz recovery and pulse/frame validation. Its offline `process_audio()` entry accepts centered AM audio at 48 kHz for protocol tests; it does not bypass IQ processing in the app's generated-source/browser test.
 
 ## Linux USB access
 
@@ -164,22 +164,46 @@ This helper temporarily unbinds only `dvb_usb_rtl28xxu` interfaces on matching R
 
 - `src/radio.ts`: WebUSB lifecycle, two continuously replenished reads, ordered configuration after draining pending transfers, and a bounded worker queue. Overload stops reception explicitly instead of silently dropping IQ continuity. Configuration revisions discard old queued results.
 - `src/decoders.ts`: discoverable manifests declaring bandwidth, sample-rate requirements and typed output capabilities, plus hardware compatibility checks. Current WASM pipelines require exactly 2.4 MSPS CU8 input.
-- `src/dsp/plugins.ts`: worker-owned decoder instances with `process()` and `dispose()`. Configuration creates a fresh instance. Each returns a list of typed events; audio is optional. `src/types.ts` declares audio, protocol telemetry, time-code, and synchronization events. Audio specifies 48 kHz interleaved stereo, source sample position, and transfer ownership. AM emits audio alone; WWV emits AM audio and structured time-code/status; WFM emits stereo audio and pilot telemetry. ARMER emits audio, control/call messages, and receiver telemetry, with a live policy-update method that retains control synchronization.
+- `src/dsp/plugins.ts`: lazy decoder factory registry, with per-decoder adapters in `src/dsp/*-plugin.ts`. These create worker-owned decoder instances with `process()` and `dispose()`. Configuration creates a fresh instance. Each returns a list of typed events; audio is optional. `src/types.ts` declares audio, protocol telemetry, time-code, and synchronization events. Audio specifies 48 kHz interleaved stereo, source sample position, and transfer ownership. AM emits audio alone; WWV emits AM audio and structured time-code/status; WFM emits stereo audio and pilot telemetry. ARMER emits audio, control/call messages, and receiver telemetry, with a live policy-update method that retains control synchronization.
 - `src/recording/`: bounded ordered IQ writer, folder/download sinks, and SigMF metadata. While recording, the worker transfers the original input buffer back after DSP; the recorder owns it through the write. Capture IDs reject stale buffers across recordings. Normal operation does not return IQ to the main thread.
-- `src/dsp/decoder.worker.ts`: shared FFT, source sample clock, decoder lifecycle and transfer of output buffers. Add manifests and native-backed factories to extend the application; unknown or unimplemented decoders are not listed.
-- `wasm/src/lib.rs`: WFM oscillator/mixer → 401-tap complex FIR and 10× decimation → phase-difference FM discriminator at 240 kHz → coherent 19 kHz pilot recovery / regenerated 38 kHz difference demodulation → matched 161-tap 15 kHz sum/difference filters and 5× decimation → 38 kHz discriminator-response correction / L/R matrix → per-channel de-emphasis/DC removal → interleaved 48 kHz stereo PCM. The pilot detector requires sufficient level and phase coherence for 80 ms, releases after 20 ms of loss, and fades separation over 40 ms. The phase relationship follows [ITU-R BS.450, §2.2](https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.450-2-199510-S!!PDF-E.pdf). State persists across USB blocks; configuration changes reset it with a short muted warmup.
+- `src/dsp/capture.worker.ts`: stable FFT, power/clipping, source sample clock and recording-buffer ownership. It transfers each CU8 buffer to the decoder worker and back without cloning it. During a new decoder download, live buffers continue through spectrum/recording without decoding; synthetic generation waits for its decoder to load.
+- `src/dsp/decoder-host.ts` / `decoder.worker.ts`: disposable child worker and lazy plugin loading. Changing protocols terminates the old decoder worker, making its WASM instances, memory and JS caches eligible for reclamation, while retaining capture. Same-protocol settings changes reuse the worker but recreate native state. ARMER center-only moves and live policy changes preserve native state; NFM hold updates also retain it. Stop terminates capture and its child. Optional synthetic sources load only when requested. Browser tests observe old workers closing and ensure they do not accumulate.
+- To add a decoder, add its manifest, feature-isolated native build (or external engine), plugin adapter and dynamic factory import. UI/metadata modules must not import native glue. Binary events own their buffers and never reference freed WASM memory.
+- `wasm/src/wfm.rs` plus the shared core: WFM oscillator/mixer → 401-tap complex FIR and 10× decimation → phase-difference FM discriminator at 240 kHz → coherent 19 kHz pilot recovery / regenerated 38 kHz difference demodulation → matched 161-tap 15 kHz sum/difference filters and 5× decimation → 38 kHz discriminator-response correction / L/R matrix → per-channel de-emphasis/DC removal → interleaved 48 kHz stereo PCM. The pilot detector requires sufficient level and phase coherence for 80 ms, releases after 20 ms of loss, and fades separation over 40 ms. The phase relationship follows [ITU-R BS.450, §2.2](https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.450-2-199510-S!!PDF-E.pdf). State persists across USB blocks; configuration changes reset it with a short muted warmup.
 - `public/audio-worklet.js`: bounded stereo audio FIFO, 60 ms prebuffer, and independent left/right interpolation to the actual audio device sample rate. Pause/stop/configuration changes flush queued audio.
 - `src/components/Spectrum.tsx`: FFT rendering and waterfall, independently cropped to the selected display span. FFT runs in the worker, with no main-thread sample processing.
 
 The WebUSB library and receiver/worker/canvas patterns follow the local reference apps at `../armer/web` and `../meteor-m`. The WFM decoder is implemented for this project. The underlying driver API is documented at [jtarrio/webrtlsdr](https://github.com/jtarrio/webrtlsdr); Chrome's requirements are described in [Access USB Devices on the Web](https://developer.chrome.com/docs/capabilities/usb).
 
+### WASM module boundaries
+
+Every decoder has a separate, lazily instantiated binary; selecting an idle decoder only changes metadata and does not download WASM. Spectrum-only reception loads no WASM. The old combined `spectrum_dsp_bg.wasm` is no longer shipped.
+
+| Selected decoder | Loaded WASM binaries | Approximate uncompressed bytes |
+| --- | --- | ---: |
+| None | None | 0 |
+| AM | `dsp_core` + `am` | 77 KB |
+| WFM | `dsp_core` + `wfm` | 83 KB |
+| NFM | `nfm` | 125 KB |
+| OOK/ASK | `dsp_core` + `ook` | 146 KB |
+| WWV | `dsp_core` + `wwv` | 147 KB |
+| ARMER | `armer` | 355 KB |
+| rtl_433 | `dsp_core` + `rtl433` | 622 KB |
+
+These are download sizes, not total RAM measurements. Each active instance also has linear memory and runtime state. Browser HTTP/compiled-code caches are browser-managed; terminating a worker does not promise immediate physical RAM release.
+
+`wasm/Cargo.toml` uses isolated features to build the Rust binaries from one maintained source tree. `scripts/build-wasm.sh` enables exactly one feature per release artifact; only ARMER enables `sdr-p25`. Default features enable everything for native regression tests, never for the app's release binaries. Reusable FIR helpers share source and only required code is linked into a decoder. The high-rate FIR mixer/filter/decimator is physically shared at runtime through `dsp_core`, rather than copied into each AM/WFM/WWV/OOK binary. AM and WWV also reuse the same envelope-detector source.
+
+Composition uses JavaScript's block-level adapter calls: CU8 2.4 MSPS enters the core, which outputs normalized F32 complex IQ at 240 kSPS, then the selected decoder emits owned PCM/events. rtl_433 uses the core's signed-16 IQ output. The core and decoder have separate linear memories, so reduced-rate baseband is copied between them; no per-sample JS calls or JSON IQ serialization occurs. This avoids allocator coupling and works with both Rust/wasm-bindgen and upstream C/Emscripten. NFM's CIC/squelch pipeline and ARMER's Fieldglass-compatible multichannel CIC/FIR pipeline remain inside their respective modules to preserve their sample clocks and decoding behavior.
+
 ## Verification
 
 ```sh
 npm test                 # Tuning/FFT mapping, USB lifecycle and failures, audio resampling
-npm run test:wasm        # Rust DSP tests plus the actual generated WASM in Node
+npm run test:wasm        # Native tests, isolated-module exports and actual WASM decoding
+npm run test:browser:modules # Per-decoder fetches, worker disposal and delayed-download capture
 npm run build            # Strict TypeScript and production build
-npm run check            # All three above
+npm run check            # Unit tests, native/actual WASM checks, and production build
 npm run test:browser     # WFM regression; dev or preview server must be running
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
@@ -215,4 +239,4 @@ npm run build:wasm
 npm run test:wasm
 ```
 
-The generated JS, declarations, and `.wasm` in `src/wasm/` belong together and should be versioned together. Changes to Rust require rebuilding before browser tests/builds. Third-party notices and runtime license files are in `public/licenses/`.
+The generated JS, declarations, and `.wasm` for each decoder and `dsp_core` in `src/wasm/` belong together and should be versioned together. Changes to Rust require rebuilding before browser tests/builds. Third-party notices and runtime license files are in `public/licenses/`.

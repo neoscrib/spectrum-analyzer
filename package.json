@@ -23,7 +23,8 @@
     "build:rtl433": "bash scripts/build-rtl433.sh",
     "test:rtl433": "node scripts/check-rtl433.mjs",
     "test:browser:rtl433": "node scripts/browser-rtl433-check.mjs",
-    "test:browser:armer-auto-center": "node scripts/browser-armer-auto-center-check.mjs"
+    "test:browser:armer-auto-center": "node scripts/browser-armer-auto-center-check.mjs",
+    "test:browser:modules": "node scripts/browser-modules-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",

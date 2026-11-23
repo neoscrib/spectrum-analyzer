@@ -1,4 +1,5 @@
-import { IqChannelizer } from "../wasm/spectrum_dsp";
+import { IqChannelizer } from "../wasm/dsp_core";
+import { initCore } from "./channelizer";
 import createRtl433, { type Rtl433Module } from "../wasm-rtl433/rtl433";
 import wasmUrl from "../wasm-rtl433/rtl433.wasm?url";
 import type { Settings } from "../model";
@@ -9,6 +10,7 @@ import type { DecoderPlugin } from "./plugins";
 // One engine per worker; configurations are serialized by decoder.worker.ts.
 let engine: Promise<Rtl433Module> | undefined;
 export async function rtl433Plugin(s: Settings): Promise<DecoderPlugin> {
+  await initCore();
   const native = await (engine ??= createRtl433({
     locateFile: () => wasmUrl,
   }).catch((e) => {

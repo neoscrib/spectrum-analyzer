@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import init, { WwvDecoder } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { WwvDecoder } = await receiverModule("wwv");
 import { WwvAudioFixture } from "../src/dsp/wwv-fixture.ts";
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 
 function run(corruptMarker = false) {
   const decoder = new WwvDecoder(0, 10000),

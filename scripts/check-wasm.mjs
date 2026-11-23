@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import init, { WfmDecoder } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { WfmDecoder } = await receiverModule("wfm");
 
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 const rate = 2_400_000,
   duration = 0.4;
 const iq = new Uint8Array(rate * duration * 2);

@@ -1,22 +1,7 @@
-import {
-  AmDecoder,
-  WfmDecoder,
-  WwvDecoder,
-  Receiver,
-} from "../wasm/spectrum_dsp";
 import type { Settings } from "../model";
-import type { DecoderEvent, WwvStatus } from "../types";
-import { ControlQualityWindow } from "../armer/quality";
-import { ookPlugin } from "./ook-plugin";
-import { nfmPlugin } from "./nfm-plugin";
-import { rtl433Plugin } from "./rtl433-plugin";
-import {
-  policyBitmap,
-  type ArmerPolicy,
-  type P25Event,
-  type P25Stats,
-  type SystemInformation,
-} from "../armer/model";
+import type { DecoderEvent } from "../types";
+import type { ArmerPolicy } from "../armer/model";
+import type { NfmMonitorConfig } from "../presets/model";
 
 /** A worker-owned instance, recreated on configuration/revision changes.
  * CU8 inputs remain worker-owned. Output buffers transfer ownership to consumers.
@@ -28,186 +13,29 @@ export interface DecoderPlugin {
   setHold?(id: string | null): void;
   recenter?(settings: Settings): void;
 }
-export const factories: Record<
-  Exclude<Settings["decoder"], "none">,
-  (s: Settings, policy?: ArmerPolicy) => DecoderPlugin | Promise<DecoderPlugin>
-> = {
-  rtl433: rtl433Plugin,
-  ook: ookPlugin,
-  nfm(s) {
-    return nfmPlugin(s);
-  },
-  armer(s, policy = { defaultListen: true, rules: [] }) {
-    const native = new Receiver(s.center, s.channel, 2400000);
-    const quality = new ControlQualityWindow();
-    const setPolicy = (p: ArmerPolicy) => {
-      if (!native.set_enabled(policyBitmap(p)))
-        throw Error("Invalid ARMER listen policy.");
-      previous = undefined;
-      lastAudioSample = -Infinity;
-      lastAudioTalkgroup = 0;
-    };
-    let previous: number | undefined,
-      lastAudioSample = -Infinity,
-      lastAudioTalkgroup = 0;
-    let valid = 0,
-      lastValidSeconds = -Infinity;
-    let information: SystemInformation | undefined,
-      lastInformation = -Infinity;
-    setPolicy(policy);
-    return {
-      process(iq, firstSample) {
-        native.process(iq);
-        const events: DecoderEvent[] = JSON.parse(native.take_events()).map(
-          (event: P25Event) => ({ type: "message", protocol: "armer", event }),
-        );
-        const pcm = native.take_audio();
-        if (pcm.length) {
-          const talkgroup = native.audio_talkgroup();
-          if (talkgroup !== lastAudioTalkgroup) previous = undefined;
-          const samples = new Float32Array(pcm.length * 12);
-          let at = 0;
-          for (const value of pcm) {
-            const from = previous ?? value;
-            for (let i = 1; i <= 6; i++) {
-              const v = from + ((value - from) * i) / 6;
-              samples[at++] = v;
-              samples[at++] = v;
-            }
-            previous = value;
-          }
-          events.push({
-            type: "audio",
-            samples,
-            sampleRate: 48000,
-            channels: 2,
-            firstSample,
-          });
-          lastAudioSample = firstSample;
-          lastAudioTalkgroup = talkgroup;
-        }
-        const stats: P25Stats = JSON.parse(native.stats());
-        if (firstSample - lastInformation >= 480000) {
-          information = JSON.parse(native.information());
-          lastInformation = firstSample;
-        }
-        if (stats.valid > valid) {
-          valid = stats.valid;
-          lastValidSeconds = stats.seconds;
-        }
-        events.push({
-          type: "telemetry",
-          protocol: "armer",
-          status: {
-            ...stats,
-            calls: JSON.parse(native.activity()),
-            information,
-            quality: quality.update(stats),
-            controlLocked:
-              stats.valid > 0 && stats.seconds - lastValidSeconds < 2,
-            audioTalkgroup:
-              stats.channels > 0 && firstSample - lastAudioSample < 1200000
-                ? lastAudioTalkgroup
-                : 0,
-          },
-        });
-        return events;
-      },
-      setPolicy,
-      recenter(s) {
-        if (!native.recenter(s.center))
-          throw Error(
-            "Auto-centering must keep the control channel inside the capture.",
-          );
-        previous = undefined;
-        lastAudioSample = -Infinity;
-        lastAudioTalkgroup = 0;
-      },
-      dispose: () => native.free(),
-    };
-  },
-  am(s) {
-    const native = new AmDecoder(s.channel - s.center, s.bandwidth);
-    return {
-      process(iq, firstSample) {
-        return [
-          {
-            type: "audio",
-            samples: native.process(iq),
-            sampleRate: 48000,
-            channels: 2,
-            firstSample,
-          },
-        ];
-      },
-      dispose: () => native.free(),
-    };
-  },
-  wfm(s) {
-    const native = new WfmDecoder(
-      s.channel - s.center,
-      s.bandwidth,
-      s.deemphasis,
-    );
-    native.set_stereo_enabled(s.stereo);
-    return {
-      process(iq, firstSample) {
-        const samples = native.process(iq);
-        return [
-          {
-            type: "audio",
-            samples,
-            sampleRate: 48000,
-            channels: 2,
-            firstSample,
-          },
-          {
-            type: "telemetry",
-            protocol: "wfm",
-            stereo: native.stereo_locked(),
-            pilotLevel: native.pilot_level(),
-          },
-        ];
-      },
-      dispose: () => native.free(),
-    };
-  },
-  wwv(s) {
-    const native = new WwvDecoder(s.channel - s.center, s.bandwidth);
-    let lastStatus = -Infinity;
-    return {
-      process(iq, firstSample) {
-        const samples = native.process(iq);
-        const events: DecoderEvent[] = [
-          {
-            type: "audio",
-            samples,
-            sampleRate: 48000,
-            channels: 2,
-            firstSample,
-          },
-        ];
-        // Use stream time so accelerated tests/replay preserve status transitions.
-        if (firstSample - lastStatus >= 2400000 / 5) {
-          const status: WwvStatus = JSON.parse(native.status());
-          events.push(
-            { type: "timecode", protocol: "wwv", status },
-            {
-              type: "sync",
-              protocol: "wwv",
-              locked: status.confirmed,
-              state: status.confirmed
-                ? "confirmed"
-                : status.synchronized
-                  ? "minute"
-                  : "searching",
-            },
-          );
-          lastStatus = firstSample;
-        }
-        return events;
-      },
-      dispose: () => native.free(),
-    };
-  },
-};
+/** These imports are intentionally dynamic: metadata/UI must never pull in a
+ * native decoder, its glue, or its protocol dependencies. */
+export async function createDecoder(
+  s: Settings,
+  policy: ArmerPolicy,
+  monitor: NfmMonitorConfig | null,
+): Promise<DecoderPlugin | undefined> {
+  switch (s.decoder) {
+    case "none":
+      return undefined;
+    case "wfm":
+      return (await import("./wfm-plugin")).wfmPlugin(s);
+    case "am":
+      return (await import("./am-plugin")).amPlugin(s);
+    case "wwv":
+      return (await import("./wwv-plugin")).wwvPlugin(s);
+    case "nfm":
+      return (await import("./nfm-plugin")).nfmPlugin(s, monitor);
+    case "ook":
+      return (await import("./ook-plugin")).ookPlugin(s);
+    case "armer":
+      return (await import("./armer-plugin")).armerPlugin(s, policy);
+    case "rtl433":
+      return (await import("./rtl433-plugin")).rtl433Plugin(s);
+  }
+}

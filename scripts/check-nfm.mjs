@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import init, { NfmDecoder } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { NfmDecoder } = await receiverModule("nfm");
 import { NfmTestSignal } from "../src/dsp/nfm-synthetic.ts";
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 const source = new NfmTestSignal(),
   a = new NfmDecoder(162500, 12500, 2500, -65),
   b = new NfmDecoder(187500, 12500, 2500, -65);

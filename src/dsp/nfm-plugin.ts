@@ -1,4 +1,4 @@
-import { NfmDecoder } from "../wasm/spectrum_dsp";
+import init, { NfmDecoder } from "../wasm/nfm";
 import type { Settings } from "../model";
 import type { DecoderEvent } from "../types";
 import {
@@ -9,10 +9,11 @@ import {
 } from "../presets/model";
 import type { DecoderPlugin } from "./plugins";
 
-export function nfmPlugin(
+export async function nfmPlugin(
   settings: Settings,
   monitor: NfmMonitorConfig | null = null,
-): DecoderPlugin {
+): Promise<DecoderPlugin> {
+  await init();
   const presets: FrequencyPreset[] = monitor?.presets ?? [
     {
       id: "single",

@@ -275,9 +275,15 @@ impl WwvDecoder {
             receiver: Receiver::new(),
         }
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         let receiver = &mut self.receiver;
         self.am.process(iq, |am| receiver.feed(am))
+    }
+    /// Normalized F32 I/Q at 240 kSPS from dsp_core.
+    pub fn process_baseband(&mut self, iq: &[f32]) -> Vec<f32> {
+        let receiver = &mut self.receiver;
+        self.am.process_baseband(iq, |am| receiver.feed(am))
     }
     /// Offline audio entry point for protocol verification / future WAV replay.
     /// Centered AM audio at exactly 48 kHz, before volume or de-emphasis.

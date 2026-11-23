@@ -1,6 +1,36 @@
 //! Shared CU8 channel selection for external protocol engines.
 use super::Downconverter;
 use wasm_bindgen::prelude::*;
+
+/// Shared runtime DDC. All calls process blocks; no per-sample JS callbacks.
+#[wasm_bindgen]
+pub struct Channelizer {
+    front: Downconverter,
+}
+#[wasm_bindgen]
+impl Channelizer {
+    #[wasm_bindgen(constructor)]
+    pub fn new(offset: f64, cutoff: f64, taps: usize, decimation: usize) -> Result<Self, JsValue> {
+        if !offset.is_finite()
+            || !cutoff.is_finite()
+            || cutoff <= 0.0
+            || cutoff >= 1_200_000.0
+            || !(3..=4097).contains(&taps)
+            || taps % 2 == 0
+            || !(1..=1024).contains(&decimation)
+        {
+            return Err(JsValue::from_str("Invalid channelizer configuration"));
+        }
+        Ok(Self {
+            front: Downconverter::new(offset, cutoff, taps, decimation),
+        })
+    }
+    /// CU8 2.4 MSPS -> owned interleaved normalized F32 I/Q at 2.4M / decimation.
+    pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
+        self.front.process(iq)
+    }
+}
+
 #[wasm_bindgen]
 pub struct IqChannelizer {
     front: Downconverter,

@@ -1,8 +1,12 @@
 //! Shared streaming AM channelizer and envelope detector, also used by WWV.
-use super::{Downconverter, Fir, IF_RATE, lowpass};
+#[cfg(not(target_arch = "wasm32"))]
+use super::Downconverter;
+use super::{Fir, IF_RATE, lowpass};
+#[cfg(feature = "am")]
 use wasm_bindgen::prelude::*;
 
 pub(crate) struct AmDemodulator {
+    #[cfg(not(target_arch = "wasm32"))]
     front: Downconverter,
     i: Fir,
     q: Fir,
@@ -13,14 +17,15 @@ pub(crate) struct AmDemodulator {
     warmup: usize,
 }
 impl AmDemodulator {
-    pub(crate) fn new(offset_hz: f64, bandwidth_hz: f64) -> Self {
+    pub(crate) fn new(_offset_hz: f64, bandwidth_hz: f64) -> Self {
         let taps = lowpass(
             161,
             (bandwidth_hz / 2.0 - 800.0).clamp(2200.0, 7200.0),
             IF_RATE,
         );
         Self {
-            front: Downconverter::new(offset_hz, 90_000.0, 121, 10),
+            #[cfg(not(target_arch = "wasm32"))]
+            front: Downconverter::new(_offset_hz, 90_000.0, 121, 10),
             i: Fir::new(taps.clone()),
             q: Fir::new(taps),
             count: 0,
@@ -30,59 +35,70 @@ impl AmDemodulator {
             warmup: 960,
         }
     }
-    pub(crate) fn process(&mut self, iq: &[u8], mut on_am: impl FnMut(f32)) -> Vec<f32> {
-        let mut audio = Vec::with_capacity(iq.len() / 50 + 2);
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn process(&mut self, iq: &[u8], on_am: impl FnMut(f32)) -> Vec<f32> {
+        let baseband = self.front.process(iq);
+        self.process_baseband(&baseband, on_am)
+    }
+    pub(crate) fn process_baseband(&mut self, iq: &[f32], mut on_am: impl FnMut(f32)) -> Vec<f32> {
+        let mut audio = Vec::with_capacity(iq.len() / 5 + 2);
         for pair in iq.chunks_exact(2) {
-            if let Some((i, q)) = self.front.push(pair[0], pair[1]) {
-                self.i.push(i);
-                self.q.push(q);
-                self.count += 1;
-                if self.count % 5 != 0 {
-                    continue;
-                }
-                let amplitude = self.i.value().hypot(self.q.value());
-                // Slow carrier normalization removes DC and levels RF gain/fading.
-                self.carrier += 0.00008332986 * (amplitude - self.carrier);
-                let am = (amplitude / self.carrier.max(0.003) - 1.0).clamp(-3.0, 3.0);
-                on_am(am);
-                // Remove residual carrier/AGC DC from playback (~20 Hz), while
-                // WWV receives the original normalized AM above this stage.
-                let ac = am - self.audio_input + 0.99738544 * self.audio_output;
-                self.audio_input = am;
-                self.audio_output = ac;
-                let sample = if self.warmup > 0 {
-                    self.warmup -= 1;
-                    0.0
-                } else {
-                    (ac * 0.6).clamp(-1.0, 1.0)
-                };
-                audio.push(sample);
-                audio.push(sample);
+            let (i, q) = (pair[0], pair[1]);
+            self.i.push(i);
+            self.q.push(q);
+            self.count += 1;
+            if self.count % 5 != 0 {
+                continue;
             }
+            let amplitude = self.i.value().hypot(self.q.value());
+            // Slow carrier normalization removes DC and levels RF gain/fading.
+            self.carrier += 0.00008332986 * (amplitude - self.carrier);
+            let am = (amplitude / self.carrier.max(0.003) - 1.0).clamp(-3.0, 3.0);
+            on_am(am);
+            // Remove residual carrier/AGC DC from playback (~20 Hz), while
+            // WWV receives the original normalized AM above this stage.
+            let ac = am - self.audio_input + 0.99738544 * self.audio_output;
+            self.audio_input = am;
+            self.audio_output = ac;
+            let sample = if self.warmup > 0 {
+                self.warmup -= 1;
+                0.0
+            } else {
+                (ac * 0.6).clamp(-1.0, 1.0)
+            };
+            audio.push(sample);
+            audio.push(sample);
         }
         audio
     }
 }
 
+#[cfg(feature = "am")]
 #[wasm_bindgen]
 pub struct AmDecoder {
     demodulator: AmDemodulator,
 }
+#[cfg(feature = "am")]
 #[wasm_bindgen]
 impl AmDecoder {
     #[wasm_bindgen(constructor)]
-    pub fn new(offset_hz: f64, bandwidth_hz: f64) -> Self {
+    pub fn new(_offset_hz: f64, bandwidth_hz: f64) -> Self {
         Self {
-            demodulator: AmDemodulator::new(offset_hz, bandwidth_hz),
+            demodulator: AmDemodulator::new(_offset_hz, bandwidth_hz),
         }
     }
     /// 2.4 MSPS CU8 -> 48 kHz mono audio duplicated into interleaved L/R.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         self.demodulator.process(iq, |_| {})
     }
+    /// Normalized F32 I/Q at 240 kSPS from dsp_core.
+    pub fn process_baseband(&mut self, iq: &[f32]) -> Vec<f32> {
+        self.demodulator.process_baseband(iq, |_| {})
+    }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "am"))]
 mod tests {
     use super::*;
     use std::f64::consts::PI;

@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import init, { Receiver, ArmerTestSource } from "../src/wasm/spectrum_dsp.js";
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
+import { receiverModule } from "./wasm-receivers.mjs";
+const { Receiver, ArmerTestSource } = await receiverModule("armer");
 const center = 852400000,
   control = 853075000,
   rate = 2400000;

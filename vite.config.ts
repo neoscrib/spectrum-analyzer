@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { radioReferencePlugin } from "./server/radioreference.ts";
 
 export default defineConfig(({ mode }) => ({
+  worker: { format: "es" },
   plugins: [
     react(),
     radioReferencePlugin(

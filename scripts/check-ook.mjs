@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import init, { OokDecoder } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { OokDecoder } = await receiverModule("ook");
 import { OokTestSignal } from "../src/dsp/ook-synthetic.ts";
 import { interpretBurst, ookDefaults, burstHex } from "../src/ook/model.ts";
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 for (const offset of [-175000, 170000]) {
   const source = new OokTestSignal(),
     d = new OokDecoder(offset, 50000, -120, 50, 5000);

@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
-import init, { OokDecoder } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { OokDecoder } = await receiverModule("ook");
 import { interpretBurst, burstHex, ookDefaults } from "../src/ook/model.ts";
 await mkdir("artifacts", { recursive: true });
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
   headless: true,

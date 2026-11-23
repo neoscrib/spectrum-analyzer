@@ -1,41 +1,4 @@
-/* @ts-self-types="./spectrum_dsp.d.ts" */
-
-export class AmDecoder {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        AmDecoderFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_amdecoder_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset_hz
-     * @param {number} bandwidth_hz
-     */
-    constructor(offset_hz, bandwidth_hz) {
-        const ret = wasm.amdecoder_new(offset_hz, bandwidth_hz);
-        this.__wbg_ptr = ret;
-        AmDecoderFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * 2.4 MSPS CU8 -> 48 kHz mono audio duplicated into interleaved L/R.
-     * @param {Uint8Array | number[]} iq
-     * @returns {Float32Array}
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.amdecoder_process(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v2;
-    }
-}
-if (Symbol.dispose) AmDecoder.prototype[Symbol.dispose] = AmDecoder.prototype.free;
+/* @ts-self-types="./armer.d.ts" */
 
 /**
  * Deterministic CU8 C4FM fixture, not real radio traffic or intelligible speech.
@@ -71,163 +34,6 @@ export class ArmerTestSource {
     }
 }
 if (Symbol.dispose) ArmerTestSource.prototype[Symbol.dispose] = ArmerTestSource.prototype.free;
-
-export class IqChannelizer {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        IqChannelizerFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_iqchannelizer_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset_hz
-     * @param {number} bandwidth_hz
-     */
-    constructor(offset_hz, bandwidth_hz) {
-        const ret = wasm.iqchannelizer_new(offset_hz, bandwidth_hz);
-        this.__wbg_ptr = ret;
-        IqChannelizerFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * 2.4 MSPS CU8 -> 240 kSPS interleaved signed 16-bit I/Q.
-     * @param {Uint8Array | number[]} iq
-     * @returns {Int16Array}
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.iqchannelizer_process(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayI16FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
-        return v2;
-    }
-}
-if (Symbol.dispose) IqChannelizer.prototype[Symbol.dispose] = IqChannelizer.prototype.free;
-
-export class NfmDecoder {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        NfmDecoderFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_nfmdecoder_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset
-     * @param {number} bandwidth
-     * @param {number} deviation
-     * @param {number} squelch
-     */
-    constructor(offset, bandwidth, deviation, squelch) {
-        const ret = wasm.nfmdecoder_new(offset, bandwidth, deviation, squelch);
-        this.__wbg_ptr = ret;
-        NfmDecoderFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
-     * @param {Uint8Array | number[]} iq
-     * @returns {Float32Array}
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.nfmdecoder_process(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v2;
-    }
-    /**
-     * @returns {string}
-     */
-    status() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.nfmdecoder_status(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-}
-if (Symbol.dispose) NfmDecoder.prototype[Symbol.dispose] = NfmDecoder.prototype.free;
-
-export class OokDecoder {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        OokDecoderFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_ookdecoder_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset_hz
-     * @param {number} bandwidth_hz
-     * @param {number} threshold_db
-     * @param {number} min_pulse_us
-     * @param {number} gap_us
-     */
-    constructor(offset_hz, bandwidth_hz, threshold_db, min_pulse_us, gap_us) {
-        const ret = wasm.ookdecoder_new(offset_hz, bandwidth_hz, threshold_db, min_pulse_us, gap_us);
-        this.__wbg_ptr = ret;
-        OokDecoderFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * CU8 at 2.4 MSPS -> complex channel filter -> 120 kSPS magnitude.
-     * @param {Uint8Array | number[]} iq
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.ookdecoder_process(this.__wbg_ptr, ptr0, len0);
-    }
-    /**
-     * @returns {string}
-     */
-    status() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.ookdecoder_status(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {string}
-     */
-    take_bursts() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.ookdecoder_take_bursts(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-}
-if (Symbol.dispose) OokDecoder.prototype[Symbol.dispose] = OokDecoder.prototype.free;
 
 export class Receiver {
     __destroy_into_raw() {
@@ -373,124 +179,6 @@ export class Receiver {
     }
 }
 if (Symbol.dispose) Receiver.prototype[Symbol.dispose] = Receiver.prototype.free;
-
-export class WfmDecoder {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        WfmDecoderFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wfmdecoder_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset_hz
-     * @param {number} bandwidth_hz
-     * @param {number} deemphasis_us
-     */
-    constructor(offset_hz, bandwidth_hz, deemphasis_us) {
-        const ret = wasm.wfmdecoder_new(offset_hz, bandwidth_hz, deemphasis_us);
-        this.__wbg_ptr = ret;
-        WfmDecoderFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * @returns {number}
-     */
-    pilot_level() {
-        const ret = wasm.wfmdecoder_pilot_level(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @param {Uint8Array | number[]} iq
-     * @returns {Float32Array}
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wfmdecoder_process(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v2;
-    }
-    /**
-     * @param {boolean} enabled
-     */
-    set_stereo_enabled(enabled) {
-        wasm.wfmdecoder_set_stereo_enabled(this.__wbg_ptr, enabled);
-    }
-    /**
-     * @returns {boolean}
-     */
-    stereo_locked() {
-        const ret = wasm.wfmdecoder_stereo_locked(this.__wbg_ptr);
-        return ret !== 0;
-    }
-}
-if (Symbol.dispose) WfmDecoder.prototype[Symbol.dispose] = WfmDecoder.prototype.free;
-
-export class WwvDecoder {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        WwvDecoderFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wwvdecoder_free(ptr, 0);
-    }
-    /**
-     * @param {number} offset_hz
-     * @param {number} bandwidth_hz
-     */
-    constructor(offset_hz, bandwidth_hz) {
-        const ret = wasm.wwvdecoder_new(offset_hz, bandwidth_hz);
-        this.__wbg_ptr = ret;
-        WwvDecoderFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * @param {Uint8Array | number[]} iq
-     * @returns {Float32Array}
-     */
-    process(iq) {
-        const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wwvdecoder_process(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v2;
-    }
-    /**
-     * Offline audio entry point for protocol verification / future WAV replay.
-     * Centered AM audio at exactly 48 kHz, before volume or de-emphasis.
-     * @param {Float32Array | number[]} audio
-     */
-    process_audio(audio) {
-        const ptr0 = passArrayF32ToWasm0(audio, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.wwvdecoder_process_audio(this.__wbg_ptr, ptr0, len0);
-    }
-    /**
-     * @returns {string}
-     */
-    status() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.wwvdecoder_status(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-}
-if (Symbol.dispose) WwvDecoder.prototype[Symbol.dispose] = WwvDecoder.prototype.free;
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -513,43 +201,20 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./spectrum_dsp_bg.js": import0,
+        "./armer_bg.js": import0,
     };
 }
 
-const AmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_amdecoder_free(ptr, 1));
 const ArmerTestSourceFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_armertestsource_free(ptr, 1));
-const IqChannelizerFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_iqchannelizer_free(ptr, 1));
-const NfmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_nfmdecoder_free(ptr, 1));
-const OokDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_ookdecoder_free(ptr, 1));
 const ReceiverFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_receiver_free(ptr, 1));
-const WfmDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wfmdecoder_free(ptr, 1));
-const WwvDecoderFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wwvdecoder_free(ptr, 1));
 
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
-}
-
-function getArrayI16FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getInt16ArrayMemory0().subarray(ptr / 2, ptr / 2 + len);
 }
 
 function getArrayU8FromWasm0(ptr, len) {
@@ -563,14 +228,6 @@ function getFloat32ArrayMemory0() {
         cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
     }
     return cachedFloat32ArrayMemory0;
-}
-
-let cachedInt16ArrayMemory0 = null;
-function getInt16ArrayMemory0() {
-    if (cachedInt16ArrayMemory0 === null || cachedInt16ArrayMemory0.byteLength === 0) {
-        cachedInt16ArrayMemory0 = new Int16Array(wasm.memory.buffer);
-    }
-    return cachedInt16ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -608,13 +265,6 @@ function passArray8ToWasm0(arg, malloc) {
     return ptr;
 }
 
-function passArrayF32ToWasm0(arg, malloc) {
-    const ptr = malloc(arg.length * 4, 4) >>> 0;
-    getFloat32ArrayMemory0().set(arg, ptr / 4);
-    WASM_VECTOR_LEN = arg.length;
-    return ptr;
-}
-
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_externrefs.get(idx);
     wasm.__externref_table_dealloc(idx);
@@ -643,7 +293,6 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedFloat32ArrayMemory0 = null;
-    cachedInt16ArrayMemory0 = null;
     cachedUint16ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
@@ -730,7 +379,7 @@ async function __wbg_init_once(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('spectrum_dsp_bg.wasm', import.meta.url);
+        module_or_path = new URL('armer_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

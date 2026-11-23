@@ -130,7 +130,7 @@ export class RadioSession {
   ) {
     this.settings = settings;
     this.worker = new Worker(
-      new URL("./dsp/decoder.worker.ts", import.meta.url),
+      new URL("./dsp/capture.worker.ts", import.meta.url),
       { type: "module" },
     );
     const worker = this.worker;

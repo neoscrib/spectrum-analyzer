@@ -3,18 +3,14 @@ import assert from "node:assert/strict";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import init, { Receiver, ArmerTestSource } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { Receiver, ArmerTestSource } = await receiverModule("armer");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const referenceDir =
   process.env.FIELDGLASS_WASM_DIR || resolve(root, "../armer/web/src/wasm");
 const reference = await import(
   pathToFileURL(resolve(referenceDir, "armer_dsp.js")).href
 );
-await init({
-  module_or_path: await readFile(
-    resolve(root, "src/wasm/spectrum_dsp_bg.wasm"),
-  ),
-});
 await reference.default({
   module_or_path: await readFile(resolve(referenceDir, "armer_dsp_bg.wasm")),
 });

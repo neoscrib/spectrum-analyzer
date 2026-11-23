@@ -1,6 +1,8 @@
 //! Streaming binary ASK/OOK envelope and pulse acquisition. No device protocol
 //! or checksum is inferred here: pulse interpretation belongs to the caller.
-use super::{Downconverter, Fir, IF_RATE, lowpass};
+#[cfg(not(target_arch = "wasm32"))]
+use super::Downconverter;
+use super::{Fir, IF_RATE, lowpass};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -17,6 +19,7 @@ struct Burst {
 }
 #[wasm_bindgen]
 pub struct OokDecoder {
+    #[cfg(not(target_arch = "wasm32"))]
     front: Downconverter,
     i: Fir,
     q: Fir,
@@ -46,7 +49,7 @@ pub struct OokDecoder {
 impl OokDecoder {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        offset_hz: f64,
+        _offset_hz: f64,
         bandwidth_hz: f64,
         threshold_db: f32,
         min_pulse_us: f64,
@@ -59,7 +62,8 @@ impl OokDecoder {
         );
         let manual = (threshold_db > -110.0).then(|| 10.0_f32.powf(threshold_db / 20.0));
         Self {
-            front: Downconverter::new(offset_hz, 90000.0, 161, 10),
+            #[cfg(not(target_arch = "wasm32"))]
+            front: Downconverter::new(_offset_hz, 90000.0, 161, 10),
             i: Fir::new(taps.clone()),
             q: Fir::new(taps),
             phase: false,
@@ -86,15 +90,19 @@ impl OokDecoder {
         }
     }
     /// CU8 at 2.4 MSPS -> complex channel filter -> 120 kSPS magnitude.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn process(&mut self, iq: &[u8]) {
+        let baseband = self.front.process(iq);
+        self.process_baseband(&baseband);
+    }
+    /// Normalized F32 I/Q at 240 kSPS from dsp_core.
+    pub fn process_baseband(&mut self, iq: &[f32]) {
         for pair in iq.chunks_exact(2) {
-            if let Some((i, q)) = self.front.push(pair[0], pair[1]) {
-                self.i.push(i);
-                self.q.push(q);
-                self.phase = !self.phase;
-                if !self.phase {
-                    self.push_envelope(self.i.value().hypot(self.q.value()));
-                }
+            self.i.push(pair[0]);
+            self.q.push(pair[1]);
+            self.phase = !self.phase;
+            if !self.phase {
+                self.push_envelope(self.i.value().hypot(self.q.value()));
             }
         }
     }

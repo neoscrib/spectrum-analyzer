@@ -1,9 +1,12 @@
-import { OokDecoder } from "../wasm/spectrum_dsp";
+import init, { OokDecoder } from "../wasm/ook";
+import { initCore, createChannelizer } from "./channelizer";
 import type { Settings } from "../model";
 import type { DecoderPlugin } from "./plugins";
 import type { DecoderEvent } from "../types";
 import type { OokBurst } from "../ook/model";
-export function ookPlugin(s: Settings): DecoderPlugin {
+export async function ookPlugin(s: Settings): Promise<DecoderPlugin> {
+  await Promise.all([init(), initCore()]);
+  const front = createChannelizer(s);
   const native = new OokDecoder(
     s.channel - s.center,
     s.bandwidth,
@@ -14,7 +17,7 @@ export function ookPlugin(s: Settings): DecoderPlugin {
   let last = -Infinity;
   return {
     process(iq, firstSample) {
-      native.process(iq);
+      native.process_baseband(front.process(iq));
       const events: DecoderEvent[] = (
         JSON.parse(native.take_bursts()) as OokBurst[]
       ).map((burst) => ({ type: "message", protocol: "ook", burst }));
@@ -28,6 +31,9 @@ export function ookPlugin(s: Settings): DecoderPlugin {
       }
       return events;
     },
-    dispose: () => native.free(),
+    dispose() {
+      native.free();
+      front.free();
+    },
   };
 }

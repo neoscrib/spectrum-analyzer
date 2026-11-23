@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { open, readFile, writeFile, mkdir } from "node:fs/promises";
-import init, { IqChannelizer } from "../src/wasm/spectrum_dsp.js";
+import { receiverModule } from "./wasm-receivers.mjs";
+const { IqChannelizer } = await receiverModule("dsp_core");
 import create from "../src/wasm-rtl433/rtl433.js";
 import { Rtl433TestSignal } from "../src/dsp/rtl433-synthetic.ts";
 
-await init({
-  module_or_path: await readFile(
-    new URL("../src/wasm/spectrum_dsp_bg.wasm", import.meta.url),
-  ),
-});
 const messages = [];
 const engine = await create({
   wasmBinary: await readFile(

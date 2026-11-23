@@ -67,6 +67,7 @@ const row = (name) =>
     .filter({ has: page.getByText(name, { exact: true }) });
 try {
   await page.goto(process.env.APP_URL || "http://127.0.0.1:5176");
+  await page.getByLabel("Decoder", { exact: true }).selectOption("nfm");
   await expect(page.locator(".preset-table tbody tr")).toHaveCount(22);
   await row("Channel 1")
     .getByRole("button", { name: "Tune Channel 1", exact: true })

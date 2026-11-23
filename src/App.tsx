@@ -938,16 +938,6 @@ export default function App() {
               )}
             </section>
 
-            <IqRecordingPanel
-              state={recording}
-              active={active}
-              busy={busy}
-              preparing={recordPreparing}
-              onStart={startRecording}
-              onStop={() => radio.current!.stopRecording()}
-              onClear={() => radio.current!.clearRecording()}
-            />
-
             <section className="panel decoder-panel">
               <div className="panel-title">
                 <h2>
@@ -1466,6 +1456,16 @@ export default function App() {
                 Bias tee off. Gain rounds to a supported hardware step.
               </p>
             </section>
+
+            <IqRecordingPanel
+              state={recording}
+              active={active}
+              busy={busy}
+              preparing={recordPreparing}
+              onStart={startRecording}
+              onStop={() => radio.current!.stopRecording()}
+              onClear={() => radio.current!.clearRecording()}
+            />
           </aside>
 
           <PresetPanel

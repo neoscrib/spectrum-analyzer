@@ -314,6 +314,8 @@ export function PresetPanel({
     setPending(false);
   };
   const selected = bank.presets.find((p) => p.id === status?.selectedId);
+  // Keep bank selection and activity history mounted across decoder changes.
+  if (settings.decoder !== "nfm") return null;
   return (
     <section className="preset-panel panel" aria-label="Frequency presets">
       <div className="preset-heading">

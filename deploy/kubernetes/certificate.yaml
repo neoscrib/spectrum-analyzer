@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: spectrumsdr-cert
+  namespace: myapps
+spec:
+  secretName: spectrumsdr-cert
+  privateKey:
+    rotationPolicy: Always
+  dnsNames:
+    - spectrumsdr.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod-spaceship

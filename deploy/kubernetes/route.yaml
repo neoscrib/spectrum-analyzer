@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: spectrum-analyzer
+  namespace: myapps
+spec:
+  parentRefs:
+    - name: myapps-gateway
+      sectionName: spectrumsdr-https
+  hostnames:
+    - spectrumsdr.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: spectrum-analyzer-api
+          port: 8081
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: spectrum-analyzer
+          port: 80

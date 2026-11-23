@@ -29,6 +29,10 @@ For HTTPS hosting, serve the contents of `dist/` at the origin root. Use revalid
 
 ## Docker and GHCR
 
+The production Kubernetes deployment at **https://spectrumsdr.com** uses the
+existing Traefik Gateway and cert-manager Spaceship DNS challenge. See
+[deployment manifests and instructions](deploy/kubernetes/README.md).
+
 ```sh
 # Set RR_APP_KEY in .env.local (see .env.example), then:
 docker compose --env-file .env.local up --build

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: myapps
+resources:
+  - certificate.yaml
+  - workloads.yaml
+  - route.yaml
+images:
+  - name: ghcr.io/neoscrib/spectrum-analyzer
+    newTag: b84c4c7f34d6ab8628cb20fd92e98e1793a7d33e
+    digest: sha256:c513cff6e8b39eea64ed8e0e7be1fd888bdce541a885341c04d8fb5be4e051e4
+  - name: ghcr.io/neoscrib/spectrum-analyzer-api
+    newTag: b84c4c7f34d6ab8628cb20fd92e98e1793a7d33e
+    digest: sha256:a268619595ea23800b95d43bfd213f460f91d20f83bbb25729de99e98dc35c9b

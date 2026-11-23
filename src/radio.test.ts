@@ -165,6 +165,41 @@ it("serializes tuning and gain writes between fully drained USB read pairs", asy
   ).toBe(true);
   await stop(session);
 });
+it("auto-centers ARMER after draining USB without replacing its decoder or control frequency", async () => {
+  const { downloadSink } = await import("./recording/storage");
+  const session = new RadioSession();
+  await session.connect({
+    ...defaults,
+    decoder: "armer",
+    bandwidth: 12500,
+    center: 852400000,
+    channel: 853075000,
+  });
+  device.setCenterFrequency.mockClear();
+  device.setGain.mockClear();
+  let finishTune!: () => void;
+  device.setCenterFrequency.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishTune = resolve;
+      }),
+  );
+  const pending = session.recenterArmer(853850000);
+  await pair();
+  expect(() => session.startRecording(downloadSink("blocked.cu8"), 2)).toThrow(
+    /finish tuning/,
+  );
+  finishTune();
+  await pending;
+  expect(device.setCenterFrequency).toHaveBeenCalledWith(853850000);
+  expect(device.setGain).not.toHaveBeenCalled();
+  expect(workers[0].messages.find((m) => m.type === "recenter")).toMatchObject({
+    settings: { center: 853850000, channel: 853075000 },
+    revision: 2,
+  });
+  expect(workers[0].messages.some((m) => m.type === "configure")).toBe(false);
+  await stop(session);
+});
 it("updates the RF center and all NFM virtual receivers in one worker configuration", async () => {
   const windows = captureWindows(starterLibrary().banks[0]);
   const config = (index: number) => ({
@@ -297,6 +332,9 @@ it("records returned IQ even across policy revisions, excludes stale capture IDs
   session.onRecording = (state) => states.push(state);
   await session.connect({ ...defaults, decoder: "armer", bandwidth: 12500 });
   session.startRecording(downloadSink("test.cu8"), 0);
+  await expect(session.recenterArmer(defaults.center)).rejects.toThrow(
+    /during recording/,
+  );
   const worker = workers[0];
   const command = worker.messages.find((m) => m.type === "recording" && m.id)!;
   if (command.type !== "recording") throw Error("Missing capture command");

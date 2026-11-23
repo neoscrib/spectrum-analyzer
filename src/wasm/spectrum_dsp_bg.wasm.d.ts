@@ -22,10 +22,12 @@ export const ookdecoder_new: (a: number, b: number, c: number, d: number, e: num
 export const ookdecoder_process: (a: number, b: number, c: number) => void;
 export const ookdecoder_status: (a: number) => [number, number];
 export const ookdecoder_take_bursts: (a: number) => [number, number];
+export const receiver_activity: (a: number) => [number, number];
 export const receiver_audio_talkgroup: (a: number) => number;
 export const receiver_information: (a: number) => [number, number];
 export const receiver_new: (a: number, b: number, c: number) => [number, number, number];
 export const receiver_process: (a: number, b: number, c: number) => void;
+export const receiver_recenter: (a: number, b: number) => number;
 export const receiver_set_enabled: (a: number, b: number, c: number) => number;
 export const receiver_set_listen: (a: number, b: number, c: number, d: number) => void;
 export const receiver_stats: (a: number) => [number, number];

@@ -57,6 +57,18 @@ export interface ArmerStatus extends P25Stats {
   controlLocked: boolean;
   quality: ControlQuality;
   information?: SystemInformation;
+  calls?: ActiveCall[];
+}
+export interface ActiveCall {
+  channel: number;
+  talkgroup: number;
+  source: number;
+  frequency: number;
+  encrypted: boolean | null;
+  selected: boolean;
+  inCapture: boolean;
+  phase2: boolean;
+  age: number;
 }
 export interface ControlChannel {
   id: number;

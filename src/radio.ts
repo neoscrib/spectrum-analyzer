@@ -28,6 +28,7 @@ export function usbError(error: unknown): string {
 }
 
 type Command = {
+  recenter?: boolean;
   settings: Settings;
   monitor: NfmMonitorConfig | null;
   resolve: () => void;
@@ -39,8 +40,14 @@ export class RadioSession {
   onRecording: (state: RecordingState) => void = () => {};
   private recorder?: IqRecorder;
   private recordingId = 0;
+  private recentering = false;
   startRecording(sink: RecordingSink, seconds: number) {
-    if (!this.running || !this.settings || this.commands.length)
+    if (
+      !this.running ||
+      !this.settings ||
+      this.commands.length ||
+      this.recentering
+    )
       throw Error("Start a source and finish tuning before recording IQ.");
     if (
       this.recorder &&
@@ -284,7 +291,7 @@ export class RadioSession {
               await device.setCenterFrequency(s.center);
             if (s.gain !== this.settings?.gain) await device.setGain(s.gain);
             await device.resetBuffer();
-            this.configure(s, command.monitor);
+            this.configure(s, command.monitor, command.recenter);
             command.resolve();
           } catch (e) {
             command.reject(e instanceof Error ? e : Error(String(e)));
@@ -313,15 +320,16 @@ export class RadioSession {
   private configure(
     settings: Settings,
     monitor: NfmMonitorConfig | null = null,
+    recenter = false,
   ) {
     this.queue = [];
     this.settings = settings;
-    this.post({
-      type: "configure",
-      settings,
-      revision: ++this.revision,
-      monitor,
-    });
+    const revision = ++this.revision;
+    this.post(
+      recenter
+        ? { type: "recenter", settings, revision }
+        : { type: "configure", settings, revision, monitor },
+    );
   }
   async update(
     settings: Settings,
@@ -338,6 +346,39 @@ export class RadioSession {
     return new Promise<void>((resolve, reject) =>
       this.commands.push({ settings, monitor, resolve, reject }),
     );
+  }
+  async recenterArmer(center: number): Promise<void> {
+    if (!this.running || this.settings?.decoder !== "armer")
+      throw Error("Start ARMER reception before auto-centering.");
+    if (
+      this.recentering ||
+      this.commands.length ||
+      (this.recorder &&
+        ["recording", "saving"].includes(this.recorder.state.phase))
+    )
+      throw Error(
+        "Auto-centering pauses during recording and other receiver changes.",
+      );
+    const settings = { ...this.settings, center };
+    validateSettings(settings);
+    this.recentering = true;
+    try {
+      if (this.source === "test") {
+        this.configure(settings, null, true);
+        return;
+      }
+      await new Promise<void>((resolve, reject) =>
+        this.commands.push({
+          settings,
+          monitor: null,
+          recenter: true,
+          resolve,
+          reject,
+        }),
+      );
+    } finally {
+      this.recentering = false;
+    }
   }
   private enqueue(data: ArrayBuffer) {
     if (this.queue.length >= 12) {

@@ -88,6 +88,14 @@ assert.deepEqual([...audioGroups].sort(), [6620, 6640]);
 assert(pcmCount > 10000);
 assert(mutedGrants > 40);
 const stats = JSON.parse(receiver.stats());
+const activity = JSON.parse(receiver.activity());
+assert(
+  activity.some((c) => c.talkgroup === 6620 && c.selected && c.source === 42),
+);
+assert(
+  activity.some((c) => c.talkgroup === 43216 && !c.inCapture && !c.selected),
+);
+assert(JSON.parse(muted.activity()).every((c) => !c.selected));
 assert(stats.valid > 200);
 assert.equal(stats.invalid, 0);
 console.log("ARMER generated CU8 → actual WASM:", {
@@ -100,6 +108,45 @@ console.log("ARMER generated CU8 → actual WASM:", {
 receiver.free();
 muted.free();
 source.free();
+
+// The physical center changes while protocol state and RF time remain live.
+{
+  const source = new ArmerTestSource(),
+    r = new Receiver(854100000, control, rate);
+  r.set_enabled(enabled);
+  const feed = (center, blocks) => {
+    let audio = 0;
+    for (let n = 0; n < blocks; n++) {
+      r.process(source.process(center, 65536));
+      audio += r.take_audio().length;
+      r.take_events();
+    }
+    return audio;
+  };
+  assert.equal(feed(854100000, 28), 0);
+  const before = JSON.parse(r.stats()),
+    info = r.information();
+  assert(
+    JSON.parse(r.activity()).some((c) => c.talkgroup === 6620 && !c.inCapture),
+  );
+  assert.equal(r.recenter(852900000), true);
+  assert.deepEqual(JSON.parse(r.stats()), before);
+  assert.equal(r.information(), info);
+  assert(
+    JSON.parse(r.activity()).some((c) => c.talkgroup === 6620 && c.inCapture),
+  );
+  const audio = feed(852900000, 28);
+  assert(audio > 1440);
+  assert(JSON.parse(r.stats()).valid > before.valid);
+  assert.equal(JSON.parse(r.stats()).invalid, 0);
+  console.log("ARMER state-preserving center retune:", {
+    before,
+    after: JSON.parse(r.stats()),
+    audio,
+  });
+  r.free();
+  source.free();
+}
 
 if (process.env.ARMER_CAPTURE) {
   const iq = await readFile(process.env.ARMER_CAPTURE),

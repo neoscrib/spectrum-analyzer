@@ -54,6 +54,8 @@ import {
   type TalkgroupRule,
 } from "./armer/model";
 import starterAliases from "./armer/starter.json";
+import { AutoCenterTiming, chooseArmerCenter } from "./armer/auto-center";
+import { listens } from "./armer/model";
 import {
   compatibility,
   receiverCapabilities,
@@ -97,6 +99,7 @@ export default function App() {
   const [settings, setSettings] = useState(readSettings);
   const [recording, setRecording] = useState<RecordingState>(idleRecording);
   const [recordPreparing, setRecordPreparing] = useState(false);
+  const recordIntent = useRef(false);
   const [rtlStatus, setRtlStatus] = useState<Rtl433Status | null>(null);
   const [rtlProtocols, setRtlProtocols] = useState<Rtl433Protocol[]>([]);
   const [rtlMessages, setRtlMessages] = useState<Rtl433Message[]>([]);
@@ -135,6 +138,8 @@ export default function App() {
   const [armerTest, setArmerTest] = useState(false);
   const armerPending = useRef<P25Event[]>([]);
   const armerStatus = useRef<ArmerStatus | null>(null);
+  const armerReceivedAt = useRef(0);
+  const autoCenterTiming = useRef(new AutoCenterTiming());
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [centerInput, setCenterInput] = useState(mhz(settings.center));
@@ -231,8 +236,10 @@ export default function App() {
         if (event.type === "timecode") lastWwv.current = event.status;
         if (event.type === "message" && event.protocol === "armer")
           armerPending.current.push(event.event);
-        if (event.type === "telemetry" && event.protocol === "armer")
+        if (event.type === "telemetry" && event.protocol === "armer") {
           armerStatus.current = event.status;
+          armerReceivedAt.current = performance.now();
+        }
         if (event.type === "telemetry" && event.protocol === "nfm")
           nfmStatus.current = event.status;
         if (event.type === "activity" && event.protocol === "nfm")
@@ -307,6 +314,62 @@ export default function App() {
     if (settingsRef.current.decoder === "armer") audio.current!.clear();
   }, [armerListenKey]);
   useEffect(() => {
+    const now = performance.now(),
+      status = armerFeed.status;
+    if (
+      !active ||
+      busy ||
+      recordLocked ||
+      recordIntent.current ||
+      settings.decoder !== "armer" ||
+      !settings.armerAutoCenter ||
+      !status?.controlLocked ||
+      now - armerReceivedAt.current > 1200
+    ) {
+      autoCenterTiming.current.observe(null, now);
+      return;
+    }
+    const protectedCall = playing
+      ? status.calls?.find(
+          (c) =>
+            c.selected &&
+            c.encrypted === false &&
+            c.talkgroup === status.audioTalkgroup &&
+            listens(c.talkgroup, armerConfig),
+        )
+      : undefined;
+    const proposal = chooseArmerCenter(
+      settings.center,
+      settings.channel,
+      status.calls ?? [],
+      armerConfig,
+      protectedCall?.frequency,
+    );
+    const center = autoCenterTiming.current.observe(proposal, now);
+    if (center === null) return;
+    setBusy(true);
+    void radio
+      .current!.recenterArmer(center)
+      .then(() => {
+        audio.current!.clear();
+        fft.current = null;
+        setSettings((previous) => ({ ...previous, center }));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  }, [
+    armerFeed.status,
+    active,
+    busy,
+    recordLocked,
+    settings.decoder,
+    settings.armerAutoCenter,
+    settings.center,
+    settings.channel,
+    armerListenKey,
+    playing,
+  ]);
+  useEffect(() => {
     setCenterInput(mhz(settings.center));
     setChannelInput(mhz(settings.channel));
   }, [settings.center, settings.channel]);
@@ -318,6 +381,8 @@ export default function App() {
     if (busy) return false;
     try {
       validateSettings(next);
+      if (active && settingsRef.current.decoder === "armer")
+        autoCenterTiming.current.defer(performance.now());
       setError("");
       setBusy(true);
       if (active) await radio.current!.update(next, monitor);
@@ -373,6 +438,7 @@ export default function App() {
     setError("");
     setBusy(true);
     setFrozen(false);
+    autoCenterTiming.current.reset();
     fft.current = null;
     setMetrics(emptyMetrics);
     setWwv(null);
@@ -501,6 +567,7 @@ export default function App() {
   }
   async function startRecording(mode: "disk" | "download", seconds: number) {
     if (recordPreparing || busy || !active) return;
+    recordIntent.current = true;
     setError("");
     setRecordPreparing(true);
     const current = settingsRef.current,
@@ -530,6 +597,7 @@ export default function App() {
       if (!(error instanceof DOMException && error.name === "AbortError"))
         setError(error instanceof Error ? error.message : String(error));
     } finally {
+      recordIntent.current = false;
       setRecordPreparing(false);
     }
   }
@@ -849,6 +917,7 @@ export default function App() {
             )}
             {settings.decoder === "armer" && (
               <ArmerPanel
+                playing={playing}
                 config={armerConfig}
                 onChange={setArmerConfig}
                 feed={armerFeed}
@@ -1233,6 +1302,25 @@ export default function App() {
                 )}
                 {settings.decoder === "armer" && (
                   <div className="wwv-controls">
+                    <label className="checkbox-label armer-auto-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Auto-center active talkgroups"
+                        checked={settings.armerAutoCenter}
+                        onChange={(e) =>
+                          setSettings((previous) => ({
+                            ...previous,
+                            armerAutoCenter: e.target.checked,
+                          }))
+                        }
+                      />
+                      Auto-center active talkgroups
+                    </label>
+                    <p className="caption">
+                      {recordLocked && settings.armerAutoCenter
+                        ? "Auto-centering paused while recording IQ."
+                        : "Fits more enabled voice channels alongside the control channel. Channels too far apart cannot share the 2.4 MHz capture. Retunes can briefly interrupt audio."}
+                    </p>
                     <label className="field-label">
                       Saved control frequencies
                     </label>

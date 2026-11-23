@@ -58,6 +58,7 @@ export class OokDecoder {
 export class Receiver {
     free(): void;
     [Symbol.dispose](): void;
+    activity(): string;
     audio_talkgroup(): number;
     /**
      * A current summary; frequencies are re-resolved after later band plans.
@@ -65,6 +66,11 @@ export class Receiver {
     information(): string;
     constructor(center: number, control: number, rate: number);
     process(iq: Uint8Array | number[]): void;
+    /**
+     * Reset only RF-dependent DSP after a hardware center-frequency change.
+     * Learned plans, site/assignment state, counters and RF sample time survive.
+     */
+    recenter(center: number): boolean;
     /**
      * O(1) per-grant membership, equal priority for all enabled groups. A fresh
      * all-talkgroups policy must not preempt calls just because an ID is lower.
@@ -124,10 +130,12 @@ export interface InitOutput {
     readonly ookdecoder_process: (a: number, b: number, c: number) => void;
     readonly ookdecoder_status: (a: number) => [number, number];
     readonly ookdecoder_take_bursts: (a: number) => [number, number];
+    readonly receiver_activity: (a: number) => [number, number];
     readonly receiver_audio_talkgroup: (a: number) => number;
     readonly receiver_information: (a: number) => [number, number];
     readonly receiver_new: (a: number, b: number, c: number) => [number, number, number];
     readonly receiver_process: (a: number, b: number, c: number) => void;
+    readonly receiver_recenter: (a: number, b: number) => number;
     readonly receiver_set_enabled: (a: number, b: number, c: number) => number;
     readonly receiver_set_listen: (a: number, b: number, c: number, d: number) => void;
     readonly receiver_stats: (a: number) => [number, number];

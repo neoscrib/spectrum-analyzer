@@ -8,6 +8,8 @@ import {
 } from "react";
 import { Download, Upload, Radio } from "lucide-react";
 import { ArmerInformation } from "./ArmerInformation";
+import { ArmerNowPlaying } from "./ArmerNowPlaying";
+import { useArmerReception } from "../armer/reception";
 import {
   mergeAliases,
   resolver,
@@ -32,6 +34,7 @@ interface Props {
   generation: number;
   test: boolean;
   active: boolean;
+  playing: boolean;
   control: number;
   onTune: (hz: number) => void;
 }
@@ -63,6 +66,7 @@ export function ArmerPanel({
   generation,
   test,
   active,
+  playing,
   control,
   onTune,
 }: Props) {
@@ -288,7 +292,8 @@ export function ArmerPanel({
     }
   }
   const status = feed.status;
-  const audioTg = active ? status?.audioTalkgroup : 0;
+  const fresh = useArmerReception(active, status);
+  const audioTg = fresh ? status?.audioTalkgroup : 0;
   return (
     <section className="armer-panel" aria-label="ARMER decoder">
       <div className="armer-heading">
@@ -299,14 +304,16 @@ export function ArmerPanel({
           </h2>
         </div>
         <span
-          className={`chip ${active && status?.controlLocked ? "armer-lock" : ""}`}
+          className={`chip ${fresh && status?.controlLocked ? "armer-lock" : ""}`}
           role="status"
         >
           {!active
             ? "Stopped"
-            : status?.controlLocked
-              ? "Control locked"
-              : "Searching for control"}
+            : !fresh
+              ? "Waiting for receiver data"
+              : status?.controlLocked
+                ? "Control locked"
+                : "Searching for control"}
         </span>
       </div>
       {test && (
@@ -345,15 +352,15 @@ export function ArmerPanel({
             </small>
           )}
         </div>
-        <div>
-          <span>Decoded audio</span>
-          <strong data-testid="armer-now">
-            {audioTg
-              ? `${audioTg} · ${resolve(audioTg)?.name || "Unlisted talkgroup"}`
-              : "Waiting for a clear call"}
-          </strong>
-        </div>
       </div>
+      <ArmerNowPlaying
+        fresh={fresh}
+        status={status}
+        config={config}
+        control={control}
+        active={active}
+        playing={playing}
+      />
       <p className="caption">
         Rejections are CRC-failed decode candidates, not measured bit errors or
         total lost messages. Compare recent valid blocks/s when adjusting

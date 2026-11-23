@@ -11,6 +11,7 @@ import {
   type Rtl433Options,
 } from "./rtl433/model";
 export interface Settings {
+  armerAutoCenter: boolean;
   rtl433: Rtl433Options;
   ook: OokOptions;
   center: number;
@@ -27,6 +28,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  armerAutoCenter: true,
   rtl433: rtl433Defaults,
   ook: ookDefaults,
   center: 100_000_000,
@@ -43,6 +45,8 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  if (typeof s.armerAutoCenter !== "boolean")
+    throw Error("Choose whether ARMER should auto-center active talkgroups.");
   validateRtl433(s.rtl433);
   validateOok(s.ook);
   if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)

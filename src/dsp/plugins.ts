@@ -26,6 +26,7 @@ export interface DecoderPlugin {
   dispose(): void;
   setPolicy?(policy: ArmerPolicy): void;
   setHold?(id: string | null): void;
+  recenter?(settings: Settings): void;
 }
 export const factories: Record<
   Exclude<Settings["decoder"], "none">,
@@ -99,6 +100,7 @@ export const factories: Record<
           protocol: "armer",
           status: {
             ...stats,
+            calls: JSON.parse(native.activity()),
             information,
             quality: quality.update(stats),
             controlLocked:
@@ -112,6 +114,15 @@ export const factories: Record<
         return events;
       },
       setPolicy,
+      recenter(s) {
+        if (!native.recenter(s.center))
+          throw Error(
+            "Auto-centering must keep the control channel inside the capture.",
+          );
+        previous = undefined;
+        lastAudioSample = -Infinity;
+        lastAudioTalkgroup = 0;
+      },
       dispose: () => native.free(),
     };
   },

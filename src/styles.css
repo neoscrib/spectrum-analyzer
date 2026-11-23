@@ -447,6 +447,12 @@ h1 {
   gap: 7px;
   white-space: nowrap;
 }
+.armer-auto-center {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.armer-auto-center input { flex-shrink: 0; }
 .floor-control {
   display: flex;
   align-items: center;
@@ -1589,7 +1595,7 @@ h1 {
 }
 .armer-summary {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
   margin: 22px 0 14px;
 }
@@ -1609,6 +1615,90 @@ h1 {
   font-size: 10px;
   line-height: 1.6;
   margin-top: 7px;
+}
+.armer-now-playing {
+  margin: 20px 0 12px;
+  min-width: 0;
+}
+.armer-now-playing h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.armer-now-playing .armer-table-scroll {
+  max-height: 290px;
+}
+.armer-now-playing table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11px/1.5 var(--mono);
+}
+.armer-now-playing th,
+.armer-now-playing td {
+  text-align: left;
+  padding: 8px 10px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.armer-now-playing th {
+  position: sticky;
+  top: 0;
+  background: #151c23;
+  color: var(--muted);
+  font:
+    10px "DM Sans",
+    sans-serif;
+}
+.armer-now-playing .armer-now-alias {
+  min-width: 130px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.armer-now-playing .armer-now-empty {
+  color: var(--muted);
+  padding: 14px 10px;
+  white-space: normal;
+}
+.armer-now-playing .caption {
+  font-size: 11px;
+  margin: 10px 0;
+  line-height: 1.6;
+}
+.armer-control-row {
+  background: #30291c55;
+}
+.armer-call-state {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font:
+    10px/1.5 "DM Sans",
+    sans-serif;
+  color: #c5ced8;
+  background: #29313a;
+}
+.armer-call-state[data-state="control"] {
+  color: #f0d282;
+  background: #40351f;
+}
+.armer-call-state[data-state="playing"] {
+  color: #a4ebc9;
+  background: #204334;
+}
+.armer-call-state[data-state="paused"],
+.armer-call-state[data-state="receiving"],
+.armer-call-state[data-state="active"] {
+  color: #9adbee;
+  background: #203945;
+}
+.armer-call-state[data-state="encrypted"] {
+  color: #f1a5ae;
+  background: #472b34;
+}
+.armer-call-state[data-state="unknown"],
+.armer-call-state[data-state="unresolved"],
+.armer-call-state[data-state="unsupported"] {
+  color: #d2b8f0;
+  background: #382b46;
 }
 .armer-panel input:not([type="checkbox"]):not([type="file"]),
 .armer-panel select {

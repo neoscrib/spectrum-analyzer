@@ -241,6 +241,21 @@ export class Receiver {
         wasm.__wbg_receiver_free(ptr, 0);
     }
     /**
+     * @returns {string}
+     */
+    activity() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.receiver_activity(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @returns {number}
      */
     audio_talkgroup() {
@@ -284,6 +299,16 @@ export class Receiver {
         const ptr0 = passArray8ToWasm0(iq, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         wasm.receiver_process(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * Reset only RF-dependent DSP after a hardware center-frequency change.
+     * Learned plans, site/assignment state, counters and RF sample time survive.
+     * @param {number} center
+     * @returns {boolean}
+     */
+    recenter(center) {
+        const ret = wasm.receiver_recenter(this.__wbg_ptr, center);
+        return ret !== 0;
     }
     /**
      * O(1) per-grant membership, equal priority for all enabled groups. A fresh

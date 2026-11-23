@@ -10,6 +10,7 @@ use p25::{
 use serde::Serialize;
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
+mod activity;
 mod information;
 
 const FS: u64 = 0x5575F5FF77FF;
@@ -454,6 +455,7 @@ pub struct Receiver {
     nid: NidDecoder,
     plan: IdenTable,
     information: information::SystemState,
+    activity: activity::Activity,
     ranks: Vec<usize>,
     patches: Vec<Patch>,
     events: Vec<Event>,
@@ -486,6 +488,7 @@ impl Receiver {
             nid: NidDecoder::new(),
             plan: IdenTable::new(),
             information: information::SystemState::default(),
+            activity: activity::Activity::default(),
             ranks: vec![usize::MAX; 65536],
             patches: vec![],
             events: vec![],
@@ -532,6 +535,8 @@ impl Receiver {
     }
     pub fn process(&mut self, iq: &[u8]) {
         self.samples += iq.len() as u64 / 2;
+        self.activity
+            .prune(self.samples, self.rate, &self.plan, &self.voices);
         self.patches.retain(|p| p.expires > self.samples);
         let frames = self.control.process(iq, self.rate, &self.nid);
         for f in frames {
@@ -565,6 +570,42 @@ impl Receiver {
     /// A current summary; frequencies are re-resolved after later band plans.
     pub fn information(&self) -> String {
         self.information.snapshot(self).to_string()
+    }
+    pub fn activity(&self) -> String {
+        self.activity.snapshot(self).to_string()
+    }
+    /// Reset only RF-dependent DSP after a hardware center-frequency change.
+    /// Learned plans, site/assignment state, counters and RF sample time survive.
+    pub fn recenter(&mut self, center: u32) -> bool {
+        if !(24000000..=1766000000).contains(&center)
+            || center.abs_diff(self.control_hz) > self.rate / 2 - 24000
+        {
+            return false;
+        }
+        if center == self.center {
+            return true;
+        }
+        self.center = center;
+        self.control = ChannelDsp::new(self.control_hz, center, self.rate);
+        let old = std::mem::take(&mut self.voices);
+        for voice in old {
+            if !voice.ended
+                && (!voice.crypto_known || voice.clear)
+                && self.listening(voice.tg)
+                && voice.hz.abs_diff(center) < self.rate / 2 - 24000
+            {
+                let mut next = ChannelDsp::new(voice.hz, center, self.rate);
+                next.tg = voice.tg;
+                next.source = voice.source;
+                next.clear = voice.clear;
+                next.crypto_known = voice.crypto_known;
+                next.last_grant = voice.last_grant;
+                self.voices.push(next);
+            }
+        }
+        self.pcm.clear();
+        self.audio_tg = 0;
+        true
     }
 }
 
@@ -912,6 +953,8 @@ impl Receiver {
         if tg == 0 {
             return;
         }
+        self.activity
+            .grant(channel, tg, source, encrypted, self.samples);
         let resolved = self.plan.resolve(channel);
         let hz = resolved.map_or(0, |c| c.rx_hz as u32);
         let mut e = event("grant", hz);
@@ -940,6 +983,7 @@ impl Receiver {
             if v.tg != tg {
                 v.voice.reset();
                 v.tg = tg;
+                v.source = 0;
                 v.clear = false;
                 v.crypto_known = false;
             }
@@ -972,6 +1016,7 @@ impl Receiver {
     fn handle_voice(&mut self, index: usize, f: Frame) {
         let v = &mut self.voices[index];
         if f.duid == Duid::Tdu {
+            self.activity.finish(v.hz, v.tg, &self.plan);
             v.ended = true;
             v.clear = false;
             v.voice.reset();
@@ -987,6 +1032,14 @@ impl Receiver {
                     v.clear = h.ess.is_clear();
                     v.crypto_known = true;
                 }
+                self.activity.voice(
+                    v.hz,
+                    v.tg,
+                    v.source,
+                    if v.crypto_known { Some(!v.clear) } else { None },
+                    self.samples,
+                    &self.plan,
+                );
             }
             return;
         }
@@ -1020,6 +1073,14 @@ impl Receiver {
         let source = v.source;
         let clear = v.clear;
         let known = v.crypto_known;
+        self.activity.voice(
+            hz,
+            tg,
+            source,
+            if known { Some(!clear) } else { None },
+            self.samples,
+            &self.plan,
+        );
         if clear {
             for slot in &d.voice {
                 let action = v.voice.decide(slot.as_ref());
@@ -1329,12 +1390,103 @@ mod tests {
         r
     }
     #[test]
+    fn activity_tracks_all_assignments_and_replaces_reused_channel_metadata() {
+        let mut r = with_plan();
+        r.grant(279, 6620, 42, Some(false));
+        r.grant(331, 6640, 0, None);
+        let calls: serde_json::Value = serde_json::from_str(&r.activity()).unwrap();
+        assert_eq!(calls.as_array().unwrap().len(), 2);
+        assert_eq!(calls[0]["selected"], true);
+        assert_eq!(calls[1]["selected"], false);
+        r.grant(279, 6640, 0, None);
+        let calls: serde_json::Value = serde_json::from_str(&r.activity()).unwrap();
+        assert_eq!(calls[0]["talkgroup"], 6640);
+        assert_eq!(
+            calls[0]["source"], 0,
+            "Reassignment cannot inherit the previous talker's ID"
+        );
+        assert!(calls[0]["encrypted"].is_null());
+        r.grant(1000, 43216, 12, Some(false));
+        r.grant(0x1001, 60001, 0, None);
+        let calls: serde_json::Value = serde_json::from_str(&r.activity()).unwrap();
+        assert_eq!(calls.as_array().unwrap().len(), 4);
+        assert_eq!(calls[2]["inCapture"], false);
+        assert_eq!(calls[3]["frequency"], 0);
+        assert!(calls[3]["encrypted"].is_null());
+    }
+    #[test]
+    fn voice_activity_survives_policy_changes_and_expires_without_new_evidence() {
+        let mut r = with_plan();
+        r.grant(279, 6620, 42, Some(false));
+        r.samples = r.rate as u64 * 3;
+        r.activity
+            .voice(852750000, 6620, 999, Some(true), r.samples, &r.plan);
+        r.set_enabled(&vec![0; 65536]);
+        r.samples = r.rate as u64 * 5;
+        r.process(&[]);
+        let calls: serde_json::Value = serde_json::from_str(&r.activity()).unwrap();
+        assert_eq!(calls[0]["source"], 999);
+        assert_eq!(calls[0]["encrypted"], true);
+        assert_eq!(calls[0]["selected"], false);
+        assert_eq!(calls[0]["age"], 2.0);
+        r.samples = r.rate as u64 * 7;
+        r.process(&[]);
+        assert_eq!(r.activity(), "[]");
+    }
+    #[test]
+    fn a_decoded_terminator_removes_the_active_call_immediately() {
+        let mut r = with_plan();
+        r.grant(279, 6620, 42, Some(false));
+        r.handle_voice(
+            0,
+            Frame {
+                duid: Duid::Tdu,
+                nac: 0x40c,
+                correction: 0,
+                data: vec![],
+                soft: vec![],
+                end: 0,
+                score: 0.,
+            },
+        );
+        assert_eq!(r.activity(), "[]");
+        assert!(r.voices[0].ended);
+    }
+    #[test]
     fn priority_preempts_a_lower_ranked_call() {
         let mut r = with_plan();
         r.grant(279, 6640, 1, Some(false));
         assert_eq!(r.voices[0].tg, 6640);
         r.grant(145, 6620, 2, Some(false));
         assert_eq!(r.voices[0].tg, 6620);
+    }
+    #[test]
+    fn center_only_retune_keeps_control_knowledge_assignments_and_rf_clock() {
+        let mut r = with_plan();
+        feed_dibits(
+            &mut r,
+            &frame_for(&[block(0xba, [0, 0x14, 0x0f, 5, 75, 0x01, 0x4b, 0])]),
+        );
+        r.grant(279, 6620, 42, Some(false));
+        r.samples = r.rate as u64 * 2;
+        let stats = r.stats();
+        let information = r.information();
+        r.pcm.extend([0.1, 0.2]);
+        r.audio_tg = 6620;
+        assert!(r.recenter(853850000));
+        assert_eq!(r.center, 853850000);
+        assert_eq!(r.control_hz, 853075000);
+        assert_eq!(r.stats(), stats);
+        assert_eq!(r.information(), information);
+        assert_eq!(r.voices[0].source, 42);
+        assert_eq!(r.voices[0].tg, 6620);
+        assert!(r.pcm.is_empty());
+        assert_eq!(r.audio_tg, 0);
+        let calls: serde_json::Value = serde_json::from_str(&r.activity()).unwrap();
+        assert_eq!(calls[0]["age"], 2.0, "Retuning must not refresh old grants");
+        assert!(!r.recenter(857000000));
+        assert_eq!(r.center, 853850000);
+        assert_eq!(r.information(), information);
     }
     #[test]
     fn clear_ldu_reaches_the_imbe_vocoder_and_unknown_crypto_does_not() {

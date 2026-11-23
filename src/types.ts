@@ -63,6 +63,7 @@ export type DecoderEvent =
       state: "searching" | "minute" | "confirmed";
     };
 export type WorkerIn =
+  | { type: "recenter"; settings: Settings; revision: number }
   | {
       type: "init";
       settings: Settings;

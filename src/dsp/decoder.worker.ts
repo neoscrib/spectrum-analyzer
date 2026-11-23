@@ -113,6 +113,24 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "configure":
           await configure(data.settings, data.revision, data.monitor);
           break;
+        case "recenter":
+          validateSettings(data.settings);
+          if (
+            settings.decoder !== "armer" ||
+            data.settings.decoder !== "armer" ||
+            !decoder?.recenter ||
+            (["channel", "bandwidth", "gain", "ppm"] as const).some(
+              (key) => settings[key] !== data.settings[key],
+            )
+          )
+            throw Error(
+              "Only the ARMER capture center can change without resetting its decoder.",
+            );
+          decoder.recenter(data.settings);
+          settings = data.settings;
+          revision = data.revision;
+          lastSpectrum = -Infinity;
+          break;
         case "recording":
           recordingId = data.id;
           break;

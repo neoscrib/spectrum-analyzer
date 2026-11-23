@@ -10,6 +10,20 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1120 } }),
   errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 await page.addInitScript(() => {
+  const NativeWorker = window.Worker;
+  window.Worker = class extends NativeWorker {
+    postMessage(message, ...rest) {
+      if (window.__armerPauseSamples && message.type === "test") return;
+      if (window.__armerQuietSamples && message.type === "test") {
+        const data = new Uint8Array(65536 * 2).fill(128).buffer;
+        super.postMessage({ type: "iq", data, revision: message.revision }, [
+          data,
+        ]);
+        return;
+      }
+      super.postMessage(message, ...rest);
+    }
+  };
   const Native = window.AudioContext;
   window.AudioContext = class extends Native {
     createGain() {
@@ -49,6 +63,22 @@ try {
   await expect(page.getByText("Control locked", { exact: true })).toBeVisible({
     timeout: 10000,
   });
+  const nowPlaying = page.getByRole("region", {
+    name: "Now Playing",
+    exact: true,
+  });
+  const controlRow = page.getByTestId("armer-control-row");
+  await expect(controlRow).toContainText("853.075000");
+  await expect(controlRow.locator('[data-state="control"]')).toHaveText(
+    "Control",
+  );
+  await expect(nowPlaying.locator("tbody tr").first()).toHaveAttribute(
+    "data-testid",
+    "armer-control-row",
+  );
+  await expect(
+    nowPlaying.getByText("Audio paused", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("40F / BEE07", { exact: true })).toBeVisible();
   await expect(page.getByText("5 / 75 · 40C", { exact: true })).toBeVisible();
   const summary = page.getByTestId("armer-system-summary");
@@ -113,6 +143,11 @@ try {
   await page.getByRole("button", { name: "Play audio", exact: true }).click();
   await expect.poll(rms, { timeout: 10000 }).toBeGreaterThan(0.00001);
   const audioRms = await rms();
+  await expect(nowPlaying.getByText("Playing", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pause audio", exact: true }).click();
+  await expect(nowPlaying.getByText("Playing", { exact: true })).toHaveCount(0);
+  await expect(controlRow).toBeVisible();
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
   // All groups muted must flush the AudioWorklet, retaining control state.
   const beforeMute = await valid();
   await page.getByRole("button", { name: "Mute all", exact: true }).click();
@@ -121,6 +156,10 @@ try {
   ).not.toBeChecked();
   await expect.poll(rms, { timeout: 5000 }).toBeLessThan(0.000001);
   await expect.poll(valid).toBeGreaterThan(beforeMute);
+  await expect(
+    nowPlaying.getByText("Muted", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(controlRow).toBeVisible();
   await expect(page.getByTestId("armer-callsign")).toHaveText("TEST123");
   // One explicit enabled ID with unlisted groups disabled.
   await page.getByLabel("Listen to 6620", { exact: true }).check();
@@ -130,7 +169,7 @@ try {
     .getByLabel("Alias for 6620", { exact: true })
     .fill('My Dispatch & "Ops"');
   await expect.poll(valid).toBeGreaterThan(beforeAlias);
-  await expect(page.getByTestId("armer-now")).toContainText(
+  await expect(nowPlaying.locator('[data-talkgroup="6620"]')).toContainText(
     'My Dispatch & "Ops"',
     { timeout: 12000 },
   );
@@ -161,9 +200,34 @@ try {
   await expect(
     page.getByLabel("Listen to 6640", { exact: true }),
   ).not.toBeChecked();
+  await expect(controlRow).toBeVisible();
+  // Keep delivering real IQ to WASM, but remove the generated transmissions.
+  // Control lock and active assignments must expire on the RF sample clock.
+  await page.evaluate(() => {
+    window.__armerQuietSamples = true;
+  });
+  await expect(controlRow).toHaveCount(0, { timeout: 5000 });
+  await expect(nowPlaying.locator("tr[data-talkgroup]")).toHaveCount(0, {
+    timeout: 7000,
+  });
+  await expect(nowPlaying).toContainText(
+    "Waiting for active calls or control-channel data",
+  );
+  await page.evaluate(() => {
+    window.__armerQuietSamples = false;
+  });
+  await expect(controlRow).toBeVisible({ timeout: 5000 });
+  // Simulate a stalled sample transport after exercising the actual worker.
+  // A stale Control/Playing row must not survive without fresh telemetry.
+  await page.evaluate(() => {
+    window.__armerPauseSamples = true;
+  });
+  await expect(controlRow).toHaveCount(0, { timeout: 5000 });
+  await expect(nowPlaying.locator("tr[data-talkgroup]")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Stop test signal", exact: true })
     .click();
+  await expect(nowPlaying).toContainText("Receiver stopped.");
   await expect(page.getByText(/GENERATED P25 IQ · Test IDs/)).toBeVisible();
   assert.equal(
     await page.evaluate(() => localStorage.getItem("spectrum-armer-seen-v1")),

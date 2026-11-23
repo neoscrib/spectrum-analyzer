@@ -99,3 +99,22 @@ it("preserves saved receiver settings from before the OOK decoder was added", ()
     vi.unstubAllGlobals();
   }
 });
+it("enables ARMER auto-centering when migrating existing saved receiver settings", () => {
+  const { armerAutoCenter: _, ...previous } = {
+    ...defaults,
+    center: 853850000,
+    channel: 853075000,
+    decoder: "armer",
+    bandwidth: 12500,
+    gain: 22.9,
+  };
+  vi.stubGlobal("localStorage", { getItem: () => JSON.stringify(previous) });
+  try {
+    expect(readSettings()).toMatchObject({
+      ...previous,
+      armerAutoCenter: true,
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

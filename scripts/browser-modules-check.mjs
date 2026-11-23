@@ -22,7 +22,7 @@ function moduleName(url) {
   return file.startsWith("rtl433") ? "rtl433" : file.split("_bg")[0];
 }
 async function setup() {
-  const context = await browser.newContext(),
+  const context = await browser.newContext({ serviceWorkers: "block" }),
     page = await context.newPage();
   const fetched = [],
     errors = [];

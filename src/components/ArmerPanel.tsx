@@ -271,6 +271,10 @@ export function ArmerPanel({
     setLookupBusy(true);
     setError("");
     try {
+      if (!navigator.onLine)
+        throw Error(
+          "RadioReference lookup needs an internet connection. Your saved aliases are still available.",
+        );
       const response = await fetch("/api/armer/aliases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

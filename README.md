@@ -7,7 +7,25 @@ npm ci
 npm run dev
 ```
 
-Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. The development and preview servers bind to loopback. Port 5176 avoids the reference apps. Generated WASM is included; normal use requires Node/npm, not Rust. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
+Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. Development uses port 5176; the installable production app uses port 5177. Both servers bind to loopback and avoid the reference apps. Generated WASM is included; normal use requires Node/npm, not Rust. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
+
+## Install and use offline
+
+```sh
+npm run app
+```
+
+Open **http://localhost:5177** in Chrome or Edge. The development page at port 5176 also has an **Install app** entry that opens this version in a new tab while keeping the current radio session open. Choose **Install app** in the installable version’s header, wait for **Offline ready**, then choose **Install Spectrum**. The browser also offers installation from its address bar/menu when eligible. Installed Spectrum opens in its own window. On the first visit, leave the page open until offline setup finishes; installation alone does not guarantee all files have been saved.
+
+`vite-plugin-pwa` generates the install manifest and injects the offline inventory; Workbox handles revisioned precaching and incremental updates. The production build caches the complete app, nested worker chunks, all eight WASM binaries (shared core plus decoders), the audio worklet, fonts, icons and license/source files—about **3.4 MB uncompressed**. These are disk-cache downloads; only the selected decoder and its dependencies are instantiated in memory. After **Offline ready**, the app can reopen and receive/decode/play audio/record IQ with the network disconnected and the local server stopped. WebUSB still needs Chrome or Edge and your normal receiver permission. RadioReference lookup needs a running API server and internet access; saved aliases, manual aliases and XML import/export work offline. Clearing site data or browser storage eviction removes offline files; reopen online to prepare them again.
+
+Updates download in the background and wait. **Install app / App → Update and reload** is available only after reception stops and recording has finished saving. Other open Spectrum windows must also be closed before applying an update, so another receiver session is not interrupted. Workbox removes obsolete asset revisions only when the new worker activates. A failed/incomplete download never reports **Offline ready** and can be retried from the app menu. The cache excludes API calls, credentials and recorded IQ. Only small app-specific worker messages remain for complete-cache verification, repair, and the multi-window update guard.
+
+The development server remains at **5176** and does not register a service worker; preview defaults to **5177** to keep offline production caches away from HMR. To rebuild and serve an update, rerun `npm run app`; an already built app can be served with `npm run preview`. Both servers bind to loopback. Browser settings and USB permissions belong to the exact origin: `localhost` and `127.0.0.1`, or different ports, have separate storage. To retain existing development-origin preferences when installing, stop the development server and run `npm run preview -- --port 5176`, opening it with the same hostname you used before. Return to the dedicated development origin for HMR, or unregister the production service worker in browser developer tools before reusing that origin for development.
+
+For HTTPS hosting, serve the contents of `dist/` at the origin root. Use revalidation/no-cache headers for `sw.js` and `index.html`; hashed assets may be cached immutably. Static hosting supports all local radio features; the optional `/api/armer/aliases` endpoint needs its own server. The plugin uses `injectManifest` and `registerType: "prompt"`; its [offline precache configuration](https://vite-pwa-org.netlify.app/guide/service-worker-precache) explicitly includes WASM, nested workers, fonts and public license/source files. Manifest/installation requirements are described by [Chrome's installation guide](https://web.dev/articles/install-criteria), and updates follow the [service worker lifecycle](https://web.dev/articles/service-worker-lifecycle).
+
+`npm run test:browser:pwa` starts its own temporary production server and a disposable, non-incognito Chrome profile. It checks Chrome installability, all decoder files, server-stopped/offline cold starts for every decoder, real AudioWorklet playback, offline IQ recording, browser restart without a server, mobile/desktop layouts, API cache exclusion, deferred updates, multiple-window protection, and retry after a failed decoder download. It never installs into your personal browser profile or accesses USB hardware.
 
 ## Receive and decode
 
@@ -201,7 +219,8 @@ Composition uses JavaScript's block-level adapter calls: CU8 2.4 MSPS enters the
 ```sh
 npm test                 # Tuning/FFT mapping, USB lifecycle and failures, audio resampling
 npm run test:wasm        # Native tests, isolated-module exports and actual WASM decoding
-npm run test:browser:modules # Per-decoder fetches, worker disposal and delayed-download capture
+npm run test:browser:modules # Per-decoder runtime loading (offline precaching disabled), worker disposal
+npm run test:browser:pwa # Self-hosted installability, offline cold decoders/audio, update and retry checks
 npm run build            # Strict TypeScript and production build
 npm run check            # Unit tests, native/actual WASM checks, and production build
 npm run test:browser     # WFM regression; dev or preview server must be running

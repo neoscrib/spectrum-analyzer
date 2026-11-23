@@ -56,3 +56,9 @@ https://github.com/merbanan/rtl_433
 Complete bundled source, embedding adapter, build recipe and license details:
 rtl_433-NOTICE.txt, rtl_433-25.12-source.tar.gz, rtl_433-bridge.c,
 rtl_433-build.sh, rtl_433-COPYING.txt.
+
+Offline service worker: Workbox 7.4.1 (workbox-core, workbox-precaching,
+workbox-routing, and workbox-strategies) — MIT
+https://github.com/GoogleChrome/workbox
+License: workbox-MIT.txt
+Built with vite-plugin-pwa 2.0.0; Workbox is bundled locally, not loaded from a CDN.

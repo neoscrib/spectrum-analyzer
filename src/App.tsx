@@ -74,6 +74,7 @@ import {
   type Settings,
 } from "./model";
 import { RadioSession } from "./radio";
+import { AppAccess } from "./components/AppAccess";
 
 const mhz = (hz: number) => (hz / 1e6).toFixed(4);
 const spanLabel = (hz: number) =>
@@ -653,6 +654,7 @@ export default function App() {
           <span className="local-badge">
             <span /> All processing stays local
           </span>
+          <AppAccess canUpdate={!active && !busy && !recordLocked} />
           <button
             className="icon-button help-button"
             onClick={() => setHelp(!help)}
@@ -700,9 +702,9 @@ export default function App() {
             <div>
               <h2>Connect your RTL-SDR</h2>
               <p>
-                Use Chrome or Edge at <strong>localhost:5176</strong>, close
-                other SDR applications, then choose your receiver in the USB
-                picker. Linux users can run{" "}
+                Use Chrome or Edge on the computer connected to your RTL-SDR,
+                close other SDR applications, then choose your receiver in the
+                USB picker. Linux users can run{" "}
                 <code>bash scripts/prepare-usb.sh</code> if the TV driver holds
                 the interface.
               </p>

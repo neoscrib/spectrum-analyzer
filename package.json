@@ -24,7 +24,9 @@
     "test:rtl433": "node scripts/check-rtl433.mjs",
     "test:browser:rtl433": "node scripts/browser-rtl433-check.mjs",
     "test:browser:armer-auto-center": "node scripts/browser-armer-auto-center-check.mjs",
-    "test:browser:modules": "node scripts/browser-modules-check.mjs"
+    "test:browser:modules": "node scripts/browser-modules-check.mjs",
+    "app": "npm run build && vite preview --port 5177",
+    "test:browser:pwa": "node scripts/browser-pwa-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",
@@ -44,6 +46,15 @@
     "@vitejs/plugin-react": "6.3.0",
     "typescript": "7.0.2",
     "vite": "8.3.8",
-    "vitest": "5.1.1"
+    "vite-plugin-pwa": "2.0.0",
+    "vitest": "5.1.1",
+    "workbox-core": "7.4.1",
+    "workbox-precaching": "7.4.1",
+    "workbox-routing": "7.4.1"
+  },
+  "overrides": {
+    "workbox-build": {
+      "glob": "14.0.6"
+    }
   }
 }

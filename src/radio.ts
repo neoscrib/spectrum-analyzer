@@ -196,7 +196,7 @@ export class RadioSession {
       throw Error("Stop the current source before connecting.");
     if (!globalThis.isSecureContext)
       throw Error(
-        "WebUSB requires localhost or HTTPS. Open http://localhost:5176 in Chrome or Edge.",
+        "WebUSB requires localhost or HTTPS. Open Spectrum on a secure origin in Chrome or Edge.",
       );
     if (!navigator.usb)
       throw Error(

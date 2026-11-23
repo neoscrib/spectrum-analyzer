@@ -452,7 +452,9 @@ h1 {
   line-height: 1.5;
   white-space: normal;
 }
-.armer-auto-center input { flex-shrink: 0; }
+.armer-auto-center input {
+  flex-shrink: 0;
+}
 .floor-control {
   display: flex;
   align-items: center;
@@ -2729,5 +2731,121 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .iq-rec-dot {
     animation: none;
+  }
+}
+
+.app-access-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #dce4eb;
+  background: #1b262e;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 11px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.app-access-button i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.app-access-button .ready {
+  background: var(--green);
+}
+.app-access-button .update {
+  background: #edc77e;
+}
+.app-access-button .error {
+  background: #e9a1a8;
+}
+.app-access-dialog {
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  box-sizing: border-box;
+  margin: auto;
+  padding: 25px;
+  border: 1px solid #3a4853;
+  border-radius: 12px;
+  background: #192127;
+  color: #dce4eb;
+  box-shadow: 0 20px 80px #0009;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.app-access-dialog::backdrop {
+  background: #080d12b8;
+}
+.app-access-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 14px;
+}
+.app-access-heading h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.offline-status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 0;
+  margin: 8px 0;
+}
+.offline-status > svg {
+  margin-top: 4px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.offline-status.ready > svg,
+.offline-status.ready strong {
+  color: var(--green);
+}
+.offline-status p,
+.app-access-detail {
+  color: var(--muted);
+  font-size: 12px;
+}
+.app-access-dialog button.primary,
+.app-access-dialog button.secondary,
+.app-access-dialog a.button {
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.app-access-dialog a.button {
+  margin-bottom: 14px;
+  text-decoration: none;
+}
+.app-access-error {
+  margin: 12px 0;
+  color: #f1acb4;
+  font-size: 13px;
+}
+.app-access-update {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.app-access-update p {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 580px) {
+  .header-right {
+    gap: 9px;
+  }
+  .app-access-button {
+    padding: 8px;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .app-access-dialog {
+    padding: 20px;
   }
 }

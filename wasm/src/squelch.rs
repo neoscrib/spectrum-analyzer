@@ -192,24 +192,32 @@ impl CodeDetector {
             return;
         }
         let mean = self.ring.iter().map(|v| *v as f64).sum::<f64>() / 960.;
-        let energy = self
-            .ring
-            .iter()
-            .map(|v| (*v as f64 - mean).powi(2))
-            .sum::<f64>();
+        // Unwrap/center the window once, rather than doing circular indexing
+        // again for every tone and frequency-tolerance candidate.
+        let mut window = [0.0f64; 960];
+        for (out, value) in window
+            .iter_mut()
+            .zip(self.ring[self.pos..].iter().chain(&self.ring[..self.pos]))
+        {
+            *out = *value as f64 - mean;
+        }
+        let energy = window.iter().map(|v| v * v).sum::<f64>();
         let mut scores = Vec::with_capacity(CTCSS.len());
         for (index, coeffs) in self.coefficients.iter().enumerate() {
             let mut best = 0f64;
-            for coefficient in coeffs {
-                let mut a = 0.;
-                let mut b = 0.;
-                for n in 0..960 {
-                    let x = self.ring[(self.pos + n) % 960] as f64 - mean;
-                    let next = x + coefficient * a - b;
-                    b = a;
-                    a = next;
+            let mut a = [0.0f64; 5];
+            let mut b = [0.0f64; 5];
+            // Independent recurrences keep the five tolerance candidates in
+            // flight together; their individual arithmetic/order is unchanged.
+            for x in &window {
+                for j in 0..5 {
+                    let next = x + coeffs[j] * a[j] - b[j];
+                    b[j] = a[j];
+                    a[j] = next;
                 }
-                best = best.max(a * a + b * b - coefficient * a * b);
+            }
+            for j in 0..5 {
+                best = best.max(a[j] * a[j] + b[j] * b[j] - coeffs[j] * a[j] * b[j]);
             }
             scores.push((index, best));
         }

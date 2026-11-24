@@ -87,6 +87,12 @@ with the synthetic station name **SPECTRUM** and a fixed RadioText message.
 
 The spectrum is an 8,192-point Hann-windowed FFT (293 Hz/bin at 2.4 MSPS). Display zoom does not increase FFT resolution. Trace smoothing, peak hold, display floor, waterfall, and PNG export are available. **Freeze view** leaves acquisition and audio running. Power is relative **dBFS**, not calibrated dBm or SNR. Input power includes the full captured band; ADC clipping counts samples at the converter limits. DSP processing is time spent processing one block divided by that block's RF duration, not total machine CPU usage.
 
+Uncheck **Show spectrum & waterfall** above the plots to hide both views and their plot controls. The display preference persists locally. While hidden, the main RF FFT and canvas rendering stop; tuning, decoder panels, audio, and IQ recording keep running. Showing the plots again starts a fresh live display. The WFM multiplex spectrum has its own independent visibility control.
+
+The shared analog DSP folds symmetric FIR taps and uses independent accumulators, retaining the same filter lengths, cutoffs and sample rates. Mixer/decimation counters avoid high-rate integer division. NFM squelch compares linear power with the existing 3 dB hysteresis; dB conversion remains in telemetry. CTCSS evaluates its tolerance candidates together on one unwrapped sample window. These optimizations use portable scalar WASM and do not require SIMD support. Desktop before/after benchmarks measured approximately 58% less DSP time for WFM, 46% for AM and 15–20% for NFM; these figures do not measure a particular phone's CPU usage.
+
+Generated test sources wait for DSP and can slow down. Live USB must sustain the full 2.4 MSPS input, so a successful demo alone does not establish live throughput. `npm run test:browser:live-dsp` uses the Vite development server, a virtual RTL-SDR provider delivering continuously paced CU8, the actual capture/read queue and decoder workers, and audible AudioWorklet output. It tests WFM, AM and NFM including open-squelch static under Chrome CPU throttling (`CPU_THROTTLE`, default 4; `LIVE_DSP_SECONDS`, default 12). It never opens physical USB hardware and refuses to run if provider interception fails. This stress test is not an emulation or validation of a Pixel 5. The bounded live-input overload guard still stops reception instead of silently dropping samples.
+
 Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. In-app IQ replay, other modulation modes, and arbitrary-rate tuners remain future extensions.
 
 ## RDS / RBDS station information
@@ -326,14 +332,14 @@ Every decoder has a separate, lazily instantiated binary; selecting an idle deco
 | Selected decoder | Loaded WASM binaries | Approximate uncompressed bytes |
 | --- | --- | ---: |
 | None | None | 0 |
-| AM | `dsp_core` + `am` | 77 KB |
-| WFM + RDS/RBDS | `dsp_core` + `wfm` | 125 KB |
-| NFM | `nfm` | 125 KB |
-| OOK/ASK | `dsp_core` + `ook` | 146 KB |
-| WWV | `dsp_core` + `wwv` | 147 KB |
+| AM | `dsp_core` + `am` | 79 KB |
+| WFM + RDS/RBDS | `dsp_core` + `wfm` | 127 KB |
+| NFM | `nfm` | 127 KB |
+| OOK/ASK | `dsp_core` + `ook` | 148 KB |
+| WWV | `dsp_core` + `wwv` | 149 KB |
 | ARMER | `armer` | 364 KB |
 | Meteor-M LRPT | `meteor` | 48 KB |
-| rtl_433 | `dsp_core` + `rtl433` | 622 KB |
+| rtl_433 | `dsp_core` + `rtl433` | 623 KB |
 
 These are download sizes, not total RAM measurements. Each active instance also has linear memory and runtime state. Browser HTTP/compiled-code caches are browser-managed; terminating a worker does not promise immediate physical RAM release.
 
@@ -366,6 +372,8 @@ npm run test:browser:nfm # NFM audio/codes, parallel monitoring, scanning, histo
 npm run test:browser:armer # P25 IQ/audio, talkgroup policies, aliases and XML interchange
 npm run test:browser:armer-multi # Four simultaneous calls through WASM, worker, mixer and UI
 npm run test:armer-multi  # Timestamp alignment and 1/4/8-channel WASM CPU benchmarks
+npm run test:dsp-performance # Tone/noise throughput; optional DSP_BASELINE_DIR for before/after WASM
+npm run test:browser:live-dsp # Vite dev server: continuously paced live input + audio under CPU throttling
 npm run test:fieldglass    # Exact parity with the actual ../armer/web WASM module
 ```
 

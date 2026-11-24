@@ -189,6 +189,15 @@ export default function App() {
   const [error, setError] = useState("");
   const [help, setHelp] = useState(false);
   const [frozen, setFrozen] = useState(false);
+  const [spectrumVisible, setSpectrumVisible] = useState(() => {
+    try {
+      return localStorage.getItem("spectrum-show-rf-plots") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const spectrumVisibleRef = useRef(spectrumVisible);
+  spectrumVisibleRef.current = spectrumVisible;
   const [peakHold, setPeakHold] = useState(false);
   const [floor, setFloor] = useState(-100);
   const [multiplexOpen, setMultiplexOpen] = useState(false);
@@ -231,7 +240,8 @@ export default function App() {
       if (state.phase === "complete") setSource("idle");
     };
     session.onFrame = (frame, backlog) => {
-      if (frame.spectrum) fft.current = frame.spectrum;
+      if (frame.spectrum && spectrumVisibleRef.current)
+        fft.current = frame.spectrum;
       let stereo = false;
       for (const event of frame.events) {
         if (event.type === "reset" && event.protocol === "meteor")
@@ -355,6 +365,15 @@ export default function App() {
     multiplex.current = null;
     radio.current!.setWfmMultiplex(multiplexEnabled);
   }, [multiplexEnabled]);
+  useEffect(() => {
+    fft.current = null;
+    radio.current!.setSpectrumEnabled(spectrumVisible);
+    try {
+      localStorage.setItem("spectrum-show-rf-plots", String(spectrumVisible));
+    } catch {
+      /* Display preferences are optional when storage is unavailable. */
+    }
+  }, [spectrumVisible]);
   useEffect(() => {
     try {
       localStorage.setItem("spectrum-settings", JSON.stringify(settings));
@@ -969,76 +988,96 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <Spectrum
-              data={fft}
-              sampleRate={inputRate}
-              settings={displaySettings}
-              source={source}
-              floor={floor}
-              frozen={frozen}
-              peakHold={peakHold}
-              onChannel={selectChannel}
-              onFreeze={() => setFrozen(!frozen)}
-              onReset={() => setFrozen(false)}
-            />
-            <div className="plot-footer">
-              <span>
-                <span className="trace-dot" />
-                {frozen
-                  ? "View frozen · reception continues"
-                  : active
-                    ? source === "replay"
-                      ? `Recorded I/Q · ${(inputRate / 1e6).toFixed(4)} MSPS`
-                      : source === "test"
-                        ? settings.decoder === "meteor"
-                          ? "Generated noise · acquisition test, no satellite imagery"
-                          : settings.decoder === "wwv"
-                            ? `Synthetic WWV IQ · ${testSpeed}×`
-                            : settings.decoder === "rtl433"
-                              ? "Generated rtl_433 IQ · OOK + FSK devices"
-                              : settings.decoder === "ook"
-                                ? "Generated OOK / ASK IQ · PWM test payload A6"
-                                : settings.decoder === "nfm"
-                                  ? "Generated NFM IQ · scheduled FRS test calls"
-                                  : settings.decoder === "armer"
-                                    ? "Generated P25 IQ · test vocoder data"
-                                    : settings.decoder === "am"
-                                      ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
-                                      : "Synthetic IQ · L 1 kHz / R 2 kHz"
-                        : "Live IQ stream"
-                    : metrics.samples
-                      ? "Stopped · last received spectrum"
-                      : "Waiting for receiver"}
-              </span>
-              <span>
-                8,192 FFT <b>·</b> 293 Hz / bin
-              </span>
-            </div>
-            <div className="display-options">
+            <div className="spectrum-visibility">
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={peakHold}
-                  onChange={(e) => setPeakHold(e.target.checked)}
-                />{" "}
-                Peak hold
-              </label>
-              <label className="floor-control">
-                Display floor{" "}
-                <input
-                  aria-label="Display floor"
-                  type="range"
-                  min="-120"
-                  max="-60"
-                  step="5"
-                  value={floor}
-                  onChange={(e) => setFloor(Number(e.target.value))}
+                  checked={spectrumVisible}
+                  aria-controls="rf-spectrum"
+                  onChange={(e) => {
+                    setSpectrumVisible(e.target.checked);
+                    setFrozen(false);
+                  }}
                 />
-                <span>{floor} dBFS</span>
+                Show spectrum &amp; waterfall
               </label>
-              <span className="spectrum-hint">
-                Click spectrum to tune decoder
-              </span>
+            </div>
+            <div id="rf-spectrum" hidden={!spectrumVisible}>
+              {spectrumVisible && (
+                <>
+                  <Spectrum
+                    data={fft}
+                    sampleRate={inputRate}
+                    settings={displaySettings}
+                    source={source}
+                    floor={floor}
+                    frozen={frozen}
+                    peakHold={peakHold}
+                    onChannel={selectChannel}
+                    onFreeze={() => setFrozen(!frozen)}
+                    onReset={() => setFrozen(false)}
+                  />
+                  <div className="plot-footer">
+                    <span>
+                      <span className="trace-dot" />
+                      {frozen
+                        ? "View frozen · reception continues"
+                        : active
+                          ? source === "replay"
+                            ? `Recorded I/Q · ${(inputRate / 1e6).toFixed(4)} MSPS`
+                            : source === "test"
+                              ? settings.decoder === "meteor"
+                                ? "Generated noise · acquisition test, no satellite imagery"
+                                : settings.decoder === "wwv"
+                                  ? `Synthetic WWV IQ · ${testSpeed}×`
+                                  : settings.decoder === "rtl433"
+                                    ? "Generated rtl_433 IQ · OOK + FSK devices"
+                                    : settings.decoder === "ook"
+                                      ? "Generated OOK / ASK IQ · PWM test payload A6"
+                                      : settings.decoder === "nfm"
+                                        ? "Generated NFM IQ · scheduled FRS test calls"
+                                        : settings.decoder === "armer"
+                                          ? "Generated P25 IQ · test vocoder data"
+                                          : settings.decoder === "am"
+                                            ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
+                                            : "Synthetic IQ · L 1 kHz / R 2 kHz"
+                              : "Live IQ stream"
+                          : metrics.samples
+                            ? "Stopped · last received spectrum"
+                            : "Waiting for receiver"}
+                    </span>
+                    <span>
+                      8,192 FFT <b>·</b> 293 Hz / bin
+                    </span>
+                  </div>
+                  <div className="display-options">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={peakHold}
+                        onChange={(e) => setPeakHold(e.target.checked)}
+                      />{" "}
+                      Peak hold
+                    </label>
+                    <label className="floor-control">
+                      Display floor{" "}
+                      <input
+                        aria-label="Display floor"
+                        type="range"
+                        min="-120"
+                        max="-60"
+                        step="5"
+                        value={floor}
+                        onChange={(e) => setFloor(Number(e.target.value))}
+                      />
+                      <span>{floor} dBFS</span>
+                    </label>
+                    <span className="spectrum-hint">
+                      Click spectrum to tune decoder
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
             {settings.decoder === "meteor" && (
               <Suspense

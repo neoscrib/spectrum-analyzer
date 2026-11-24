@@ -37,6 +37,8 @@ pub struct NfmDecoder {
     integrators: [[i64; 2]; 3],
     combs: [[i64; 2]; 3],
     count: usize,
+    oscillator_count: usize,
+    decimation_count: usize,
     i: Fir,
     q: Fir,
     previous: [f32; 2],
@@ -52,7 +54,8 @@ pub struct NfmDecoder {
     emphasis: f32,
     previous_audio: f32,
     deviation: f32,
-    threshold: f32,
+    threshold_power: f32,
+    noise_limit: f32,
     off: bool,
     carrier: bool,
     good: u32,
@@ -78,6 +81,8 @@ impl NfmDecoder {
             integrators: [[0; 2]; 3],
             combs: [[0; 2]; 3],
             count: 0,
+            oscillator_count: 0,
+            decimation_count: 0,
             i: Fir::new(taps.clone()),
             q: Fir::new(taps),
             previous: [0.; 2],
@@ -93,7 +98,8 @@ impl NfmDecoder {
             emphasis: 0.,
             previous_audio: 0.,
             deviation: deviation.clamp(2000., 7500.),
-            threshold: squelch.clamp(-120., 0.),
+            threshold_power: 10.0f32.powf(squelch.clamp(-120., 0.) / 10.),
+            noise_limit: (deviation.clamp(2000., 7500.) * 0.18).powi(2),
             off: squelch <= -120.,
             carrier: false,
             good: 0,
@@ -126,19 +132,17 @@ impl NfmDecoder {
                 }
             }
             self.count += 1;
-            // LCM(4096 oscillator normalization, 25 CIC, 100 output decimation).
-            // Keep the phase counter bounded during long scanner sessions.
-            if self.count == 102400 {
-                self.count = 0;
-            }
-            if self.count % 4096 == 0 {
+            self.oscillator_count += 1;
+            if self.oscillator_count == 4096 {
+                self.oscillator_count = 0;
                 let norm = self.re.hypot(self.im);
                 self.re /= norm;
                 self.im /= norm;
             }
-            if self.count % 25 != 0 {
+            if self.count < 25 {
                 continue;
             }
+            self.count = 0;
             for stage in &mut self.combs {
                 for c in 0..2 {
                     let old = stage[c];
@@ -148,9 +152,11 @@ impl NfmDecoder {
             }
             self.i.push(x[0] as f32 / (15625. * 32768.));
             self.q.push(x[1] as f32 / (15625. * 32768.));
-            if self.count % 100 != 0 {
+            self.decimation_count += 1;
+            if self.decimation_count < 4 {
                 continue;
             }
+            self.decimation_count = 0;
             self.samples += 1;
             let z = [self.i.value(), self.q.value()];
             self.power += 0.004 * (z[0] * z[0] + z[1] * z[1] - self.power);
@@ -166,11 +172,12 @@ impl NfmDecoder {
             self.noise_pos = (self.noise_pos + 1) % 32;
             let noise = self.noise_delay[self.noise_pos] - self.noise_filter.value();
             self.noise_power += 0.002 * (noise * noise - self.noise_power);
-            let level = 10. * self.power.max(1e-12).log10();
-            let threshold = self.threshold - if self.carrier { 3. } else { 0. };
-            let detected = level > threshold
-                && 10. * self.fast_power.max(1e-12).log10() > threshold
-                && self.noise_power.sqrt() < self.deviation * 0.18;
+            // Compare power directly; dB conversion belongs in telemetry, not
+            // in every 24 kHz squelch decision. Preserve the 3 dB hysteresis.
+            let threshold = self.threshold_power * if self.carrier { 0.5011872 } else { 1. };
+            let detected = self.power.max(1e-12) > threshold
+                && self.fast_power.max(1e-12) > threshold
+                && self.noise_power < self.noise_limit;
             if self.warmup > 0 {
                 self.warmup -= 1;
             }

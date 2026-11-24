@@ -184,6 +184,20 @@ try {
   await page.getByLabel("DISPLAY SPAN", { exact: true }).selectOption("150000");
   await page.getByRole("button", { name: "Freeze view", exact: true }).click();
   await expect(recordStatus).toHaveText("Recording");
+  const plots = page.getByLabel("Show spectrum & waterfall", { exact: true });
+  await plots.uncheck();
+  await expect(
+    page.getByLabel("Decoder frequency on spectrum", { exact: true }),
+  ).toHaveCount(0);
+  const hiddenSize = await page.getByTestId("iq-recording-size").textContent();
+  await expect
+    .poll(() => page.getByTestId("iq-recording-size").textContent())
+    .not.toBe(hiddenSize);
+  await expect(recordStatus).toHaveText("Recording");
+  await plots.check();
+  await expect(
+    page.getByRole("button", { name: "Freeze view", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Stop test signal", exact: true })
     .click();

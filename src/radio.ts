@@ -177,6 +177,12 @@ export class RadioSession {
   private readyReject?: (error: Error) => void;
   private stopping?: Promise<void>;
   private armerPolicy: ArmerPolicy = { defaultListen: true, rules: [] };
+  private spectrumEnabled = true;
+  setSpectrumEnabled(enabled: boolean) {
+    if (this.spectrumEnabled === enabled) return;
+    this.spectrumEnabled = enabled;
+    if (this.worker) this.post({ type: "spectrum-visibility", enabled });
+  }
   setArmerPolicy(policy: ArmerPolicy) {
     this.armerPolicy = policy;
     if (this.worker && this.settings?.decoder === "armer") {
@@ -251,6 +257,7 @@ export class RadioSession {
       settings,
       revision: ++this.revision,
       armerPolicy: this.armerPolicy,
+      spectrum: this.spectrumEnabled,
       multiplex: this.multiplexEnabled,
       input,
       monitor,

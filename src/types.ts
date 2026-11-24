@@ -94,6 +94,7 @@ export type DecoderEvent =
       state: "searching" | "minute" | "confirmed";
     };
 export type WorkerIn =
+  | { type: "spectrum-visibility"; enabled: boolean }
   | { type: "meteor-bias"; command: MeteorBiasCommand }
   | { type: "wfm-multiplex"; enabled: boolean }
   | { type: "wfm-stereo"; enabled: boolean }
@@ -106,6 +107,7 @@ export type WorkerIn =
       armerPolicy?: ArmerPolicy;
       monitor?: NfmMonitorConfig | null;
       multiplex?: boolean;
+      spectrum?: boolean;
       input?: DecoderInput;
     }
   | { type: "armer-policy"; policy: ArmerPolicy; revision: number }

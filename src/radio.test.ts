@@ -108,19 +108,28 @@ it("resumes a late synthetic block immediately without skipping a whole audio in
   }
 });
 
-it("changes multiplex visibility and stereo without retuning, resetting the decoder, or changing the source revision", async () => {
+it("changes plot visibility and stereo without retuning, resetting the decoder, or changing the source revision", async () => {
   const session = new RadioSession();
   session.setWfmMultiplex(true);
+  session.setSpectrumEnabled(false);
   await session.connect(defaults);
   const worker = workers[0];
-  expect(worker.messages[0]).toMatchObject({ type: "init", multiplex: true });
+  expect(worker.messages[0]).toMatchObject({
+    type: "init",
+    multiplex: true,
+    spectrum: false,
+  });
   device.setCenterFrequency.mockClear();
   device.setGain.mockClear();
+  session.setSpectrumEnabled(true);
+  session.setSpectrumEnabled(false);
   session.setWfmMultiplex(false);
   session.setWfmStereo(false);
   session.setWfmRds(false);
   session.setWfmMultiplex(true);
   expect(worker.messages.slice(1)).toEqual([
+    { type: "spectrum-visibility", enabled: true },
+    { type: "spectrum-visibility", enabled: false },
     { type: "wfm-multiplex", enabled: false },
     { type: "wfm-stereo", enabled: false },
     { type: "wfm-rds", enabled: false },

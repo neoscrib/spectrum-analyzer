@@ -47,6 +47,8 @@ try {
         super(...args);
         this.addEventListener("message", ({ data }) => {
           if (data.type !== "processed") return;
+          window.__spectrumFrames =
+            (window.__spectrumFrames ?? 0) + (data.spectrum ? 1 : 0);
           window.__cpu ??= [];
           window.__cpu.push((data.elapsed / (data.samples / 2400)) * 100);
           for (const event of data.events)
@@ -100,6 +102,45 @@ try {
   await expect(now.locator('[data-state="playing"]')).toHaveCount(4, {
     timeout: 20000,
   });
+  const plots = page.getByLabel("Show spectrum & waterfall", { exact: true });
+  await expect(plots).toBeChecked();
+  const initialIds = [await streamId(6620), await streamId(6640)];
+  await plots.uncheck();
+  await expect(
+    page.getByLabel("Decoder frequency on spectrum", { exact: true }),
+  ).toHaveCount(0);
+  const hiddenFrames = await page.evaluate(() => window.__cpu.length);
+  await expect
+    .poll(() => page.evaluate(() => window.__cpu.length))
+    .toBeGreaterThan(hiddenFrames + 4);
+  const spectra = await page.evaluate(() => window.__spectrumFrames);
+  await expect
+    .poll(() => page.evaluate(() => window.__cpu.length))
+    .toBeGreaterThan(hiddenFrames + 16);
+  assert.equal(
+    await page.evaluate(() => window.__spectrumFrames),
+    spectra,
+    "Hidden RF plots must not publish FFT frames",
+  );
+  await expect(now.locator('[data-state="playing"]')).toHaveCount(4);
+  await expect.poll(() => rms(0)).toBeGreaterThan(0.00001);
+  assert.deepEqual(
+    [await streamId(6620), await streamId(6640)],
+    initialIds,
+    "Hiding the plots must not restart voice decoding",
+  );
+  await mkdir("artifacts", { recursive: true });
+  await page
+    .getByRole("region", { name: "Spectrum analyzer", exact: true })
+    .screenshot({ path: "artifacts/armer-spectrum-hidden.png" });
+  await plots.check();
+  await expect(
+    page.getByLabel("Decoder frequency on spectrum", { exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__spectrumFrames))
+    .toBeGreaterThan(spectra);
+  assert.deepEqual([await streamId(6620), await streamId(6640)], initialIds);
   await expect(page.getByTestId("armer-control-row")).toBeVisible();
   const initial = [await streamId(6620), await streamId(6640)];
   for (const tg of [6660, 6680])
@@ -180,7 +221,14 @@ try {
   await expect.poll(() => rms(0)).toBeLessThan(0.000001);
   const cpu = await page.evaluate(() => window.__cpu);
   const sorted = cpu.slice().sort((a, b) => a - b);
+  await plots.uncheck();
   await page.reload();
+  await expect(
+    page.getByLabel("Show spectrum & waterfall", { exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByLabel("Decoder frequency on spectrum", { exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Simultaneous voice channels")).toHaveValue("2");
   assert.deepEqual(errors, []);
   const result = {

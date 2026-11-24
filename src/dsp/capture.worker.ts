@@ -10,6 +10,7 @@ import { DecoderHost } from "./decoder-host";
 
 const host = new DecoderHost();
 let settings: Settings;
+let spectrumEnabled = true;
 let input: DecoderInput = liveInput;
 let samplesProcessed = 0;
 let revision = 0;
@@ -66,7 +67,7 @@ async function process(data?: ArrayBuffer) {
   const count = iq.byteLength / iqStride(input.format);
   samplesProcessed += count;
   let fft: Float32Array | undefined;
-  if (count > 0 && start - lastSpectrum >= 30) {
+  if (spectrumEnabled && count > 0 && start - lastSpectrum >= 30) {
     fft = spectrum(iq, FFT_SIZE, input.format);
     lastSpectrum = start;
   }
@@ -115,6 +116,7 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
     .then(async () => {
       switch (data.type) {
         case "init":
+          spectrumEnabled = data.spectrum ?? true;
           input = data.input ?? liveInput;
           policy = data.armerPolicy ?? { defaultListen: true, rules: [] };
           multiplexEnabled = data.multiplex ?? false;
@@ -127,6 +129,10 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "wfm-multiplex":
           multiplexEnabled = data.enabled;
           await host.request({ type: "wfm-multiplex", enabled: data.enabled });
+          break;
+        case "spectrum-visibility":
+          spectrumEnabled = data.enabled;
+          lastSpectrum = -Infinity;
           break;
         case "wfm-stereo":
           settings = { ...settings, stereo: data.enabled };

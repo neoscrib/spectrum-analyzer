@@ -1811,6 +1811,15 @@ h1 {
   margin: 0;
   font-size: 14px;
 }
+.armer-playback-heading { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; }
+.armer-playback-heading h3 { margin-right:auto; }
+.armer-playback-heading .armer-voice-limit { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); }
+.armer-panel .armer-voice-limit select { width:55px; }
+.armer-call-audio { display:flex; gap:6px; align-items:center; }
+.armer-panel .armer-call-audio button { padding:4px 7px; }
+.armer-panel .armer-call-audio button[aria-pressed="true"] { color:var(--green); background:#204334; border-color:#527d69; }
+.armer-panel .armer-now-playing .armer-call-audio input[type="range"] { width:64px; flex:0 0 64px; padding:0; border:0; }
+.armer-panel .armer-call-audio select { width:78px; flex:0 0 78px; padding:4px; font-size:11px; }
 .armer-now-playing .armer-table-scroll {
   max-height: 290px;
 }

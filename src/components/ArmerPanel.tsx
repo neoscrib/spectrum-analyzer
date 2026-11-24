@@ -9,6 +9,7 @@ import {
 import { Download, Upload, Radio } from "lucide-react";
 import { ArmerInformation } from "./ArmerInformation";
 import { ArmerNowPlaying } from "./ArmerNowPlaying";
+import { audibleTalkgroup, type ArmerMix } from "../armer/audio";
 import { useArmerReception } from "../armer/reception";
 import {
   mergeAliases,
@@ -28,6 +29,8 @@ import {
 } from "../armer/xml";
 
 interface Props {
+  mix: ArmerMix;
+  onMix: (mix: ArmerMix) => void;
   config: ArmerConfig;
   onChange: Dispatch<SetStateAction<ArmerConfig>>;
   feed: ArmerFeed;
@@ -60,6 +63,8 @@ function loadSeen(): SeenTalkgroup[] {
   }
 }
 export function ArmerPanel({
+  mix,
+  onMix,
   config,
   onChange,
   feed,
@@ -297,7 +302,13 @@ export function ArmerPanel({
   }
   const status = feed.status;
   const fresh = useArmerReception(active, status);
-  const audioTg = fresh ? status?.audioTalkgroup : 0;
+  const audioGroups = new Set(
+    fresh && playing
+      ? status?.audioStreams
+          ?.filter((s) => audibleTalkgroup(s.talkgroup, mix))
+          .map((s) => s.talkgroup)
+      : [],
+  );
   return (
     <section className="armer-panel" aria-label="ARMER decoder">
       <div className="armer-heading">
@@ -358,6 +369,9 @@ export function ArmerPanel({
         </div>
       </div>
       <ArmerNowPlaying
+        mix={mix}
+        onMix={onMix}
+        onVoiceLimit={(maxVoices) => onChange((c) => ({ ...c, maxVoices }))}
         fresh={fresh}
         status={status}
         config={config}
@@ -371,9 +385,10 @@ export function ArmerPanel({
         reception.
       </p>
       <p className="caption">
-        One clear Phase I C4FM call at a time within the 2.4 MHz capture. Other
-        grants stay visible. CQPSK/LSM simulcast and Phase II voice are not
-        supported; encrypted audio is muted.
+        Clear Phase I C4FM calls share the 2.4 MHz capture. Other grants stay
+        visible. Auto-centering waits until playing calls are idle before
+        retuning. CQPSK/LSM simulcast and Phase II voice are not supported;
+        encrypted audio is muted.
       </p>
       <ArmerInformation
         information={feed.status?.information}
@@ -512,7 +527,7 @@ export function ArmerPanel({
               return (
                 <tr
                   key={ruleKey(r)}
-                  className={audioTg === r.id ? "armer-playing" : ""}
+                  className={audioGroups.has(r.id) ? "armer-playing" : ""}
                 >
                   <td>
                     <input

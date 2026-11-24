@@ -326,6 +326,9 @@ struct ChannelDsp {
     crypto_known: bool,
     ended: bool,
     last_grant: u64,
+    stream_id: u32,
+    origin: u64,
+    audio_next: Option<u64>,
 }
 impl ChannelDsp {
     fn new(hz: u32, center: u32, rate: u32) -> Self {
@@ -356,6 +359,9 @@ impl ChannelDsp {
             crypto_known: false,
             ended: false,
             last_grant: 0,
+            stream_id: 0,
+            origin: 0,
+            audio_next: None,
         }
     }
     fn process(&mut self, iq: &[u8], rate: u32, nid: &NidDecoder) -> Vec<Frame> {
@@ -445,6 +451,17 @@ struct Patch {
     members: Vec<u16>,
     expires: u64,
 }
+/// Offsets address take_audio()'s packed PCM. start is an absolute 8 kHz
+/// sample index on the RF clock, not the order that channels finished decoding.
+#[derive(Serialize)]
+struct AudioChunk {
+    id: u32,
+    talkgroup: u16,
+    frequency: u32,
+    start: u64,
+    offset: usize,
+    length: usize,
+}
 #[wasm_bindgen]
 pub struct Receiver {
     rate: u32,
@@ -461,6 +478,10 @@ pub struct Receiver {
     events: Vec<Event>,
     pcm: Vec<f32>,
     audio_tg: u16,
+    audio_chunks: Vec<AudioChunk>,
+    voice_limit: usize,
+    next_stream: u32,
+    block_start: u64,
     samples: u64,
     valid: u32,
     invalid: u32,
@@ -494,6 +515,10 @@ impl Receiver {
             events: vec![],
             pcm: vec![],
             audio_tg: 0,
+            audio_chunks: vec![],
+            voice_limit: 4,
+            next_stream: 1,
+            block_start: 0,
             samples: 0,
             valid: 0,
             invalid: 0,
@@ -504,6 +529,8 @@ impl Receiver {
         })
     }
     pub fn set_listen(&mut self, groups: Vec<u16>, hold: u16) {
+        // Preserve the legacy ordered, single-call API used by reference tools.
+        self.voice_limit = 1;
         self.patch_membership = true;
         self.ranks.fill(usize::MAX);
         for (index, group) in groups.into_iter().enumerate() {
@@ -512,6 +539,15 @@ impl Receiver {
         self.held = if hold == 0 { None } else { Some(hold) };
         self.voices.clear();
         self.pcm.clear();
+        self.audio_chunks.clear();
+    }
+    pub fn set_voice_limit(&mut self, limit: usize) -> bool {
+        if !(1..=8).contains(&limit) {
+            return false;
+        }
+        self.voice_limit = limit;
+        self.voices.truncate(limit);
+        true
     }
     /// O(1) per-grant membership, equal priority for all enabled groups. A fresh
     /// all-talkgroups policy must not preempt calls just because an ID is lower.
@@ -528,13 +564,19 @@ impl Receiver {
         }
         self.held = None;
         self.patch_membership = false;
-        self.voices.clear();
+        let old = std::mem::take(&mut self.voices);
+        self.voices = old.into_iter().filter(|v| self.listening(v.tg)).collect();
         self.pcm.clear();
+        self.audio_chunks.clear();
         self.audio_tg = 0;
         true
     }
     pub fn process(&mut self, iq: &[u8]) {
+        self.block_start = self.samples;
         self.samples += iq.len() as u64 / 2;
+        self.voices.retain(|v| {
+            !v.ended && self.samples.saturating_sub(v.last_grant) < self.rate as u64 * 4
+        });
         self.activity
             .prune(self.samples, self.rate, &self.plan, &self.voices);
         self.patches.retain(|p| p.expires > self.samples);
@@ -559,13 +601,19 @@ impl Receiver {
         serde_json::to_string(&std::mem::take(&mut self.events)).unwrap_or("[]".into())
     }
     pub fn take_audio(&mut self) -> Vec<f32> {
+        // Legacy consumers may ignore descriptors without accumulating them.
+        self.audio_chunks.clear();
         std::mem::take(&mut self.pcm)
+    }
+    /// Read descriptors BEFORE take_audio(); both outputs are owned snapshots.
+    pub fn take_audio_chunks(&mut self) -> String {
+        serde_json::to_string(&std::mem::take(&mut self.audio_chunks)).unwrap_or("[]".into())
     }
     pub fn audio_talkgroup(&self) -> u16 {
         self.audio_tg
     }
     pub fn stats(&self) -> String {
-        serde_json::json!({"valid":self.valid,"invalid":self.invalid,"frames":self.frames,"voiceFrames":self.voice_frames,"channels":self.voices.len(),"seconds":self.samples as f64/self.rate as f64}).to_string()
+        serde_json::json!({"valid":self.valid,"invalid":self.invalid,"frames":self.frames,"voiceFrames":self.voice_frames,"channels":self.voices.len(),"voiceLimit":self.voice_limit,"seconds":self.samples as f64/self.rate as f64}).to_string()
     }
     /// A current summary; frequencies are re-resolved after later band plans.
     pub fn information(&self) -> String {
@@ -600,10 +648,14 @@ impl Receiver {
                 next.clear = voice.clear;
                 next.crypto_known = voice.crypto_known;
                 next.last_grant = voice.last_grant;
+                next.origin = self.samples;
+                next.stream_id = self.next_stream;
+                self.next_stream += 1;
                 self.voices.push(next);
             }
         }
         self.pcm.clear();
+        self.audio_chunks.clear();
         self.audio_tg = 0;
         true
     }
@@ -615,8 +667,11 @@ impl Receiver {
 pub struct ArmerTestSource {
     control: Vec<Vec<u8>>,
     voice: Vec<Vec<u8>>,
-    re: [f64; 2],
-    im: [f64; 2],
+    multi_control: Vec<u8>,
+    multi_voice: Vec<Vec<u8>>,
+    voice_count: usize,
+    re: [f64; 9],
+    im: [f64; 9],
     samples: usize,
 }
 fn fixture_block(op: u8, args: [u8; 8]) -> [u8; 12] {
@@ -706,16 +761,65 @@ impl ArmerTestSource {
         Self {
             control,
             voice,
-            re: [1.0; 2],
-            im: [0.0; 2],
+            multi_control: vec![],
+            multi_voice: vec![],
+            voice_count: 0,
+            re: [1.0; 9],
+            im: [0.0; 9],
             samples: 0,
         }
+    }
+    /// Optional simultaneous RF fixture. Zero preserves the rotating reference.
+    pub fn set_voice_count(&mut self, count: usize) -> bool {
+        if count > 8 {
+            return false;
+        }
+        self.voice_count = count;
+        self.multi_control = self.control[0].clone();
+        self.multi_voice.clear();
+        let sync: Vec<u8> = (0..24).map(|i| ((FS >> (46 - i * 2)) & 3) as u8).collect();
+        let mut grants = vec![];
+        for index in 0..count {
+            let tg = 6620 + index as u16 * 20;
+            let channel = 279 + index as u16 * 8;
+            let grant = fixture_block(
+                0,
+                [
+                    4,
+                    (channel >> 8) as u8,
+                    channel as u8,
+                    (tg >> 8) as u8,
+                    tg as u8,
+                    0,
+                    0,
+                    42,
+                ],
+            );
+            grants.push(trellis::interleave(&trellis::trellis_encode(&grant)));
+            let mut body = sync.clone();
+            body.extend(frame::nid_dibits(frame::nid_encode(0x40c, Duid::Ldu1)));
+            body.extend(fec::ldu_body_encode(
+                &[[0; 8]; 9],
+                &[0, 0, 0, 0, (tg >> 8) as u8, tg as u8, 0, 0, 42],
+                true,
+                0,
+            ));
+            self.multi_voice.push(frame::insert_status(&body, 1));
+        }
+        for group in grants.chunks(3) {
+            self.multi_control
+                .extend(frame::tsdu_frame_dibits(&sync, 0x40c, group));
+        }
+        true
     }
     pub fn process(&mut self, center: u32, count: usize) -> Vec<u8> {
         let count = count.min(262144);
         let mut iq = Vec::with_capacity(count * 2);
         let levels = [600.0, 1800.0, -600.0, -1800.0];
-        let steps: Vec<Vec<(f64, f64)>> = [853075000.0, 852750000.0]
+        let frequencies: Vec<f64> = std::iter::once(853075000.0)
+            .chain((0..self.voice_count.max(1)).map(|i| 852750000.0 + i as f64 * 50000.0))
+            .collect();
+        let steps: Vec<Vec<(f64, f64)>> = frequencies
             .iter()
             .map(|hz| {
                 levels
@@ -734,21 +838,37 @@ impl ArmerTestSource {
         for _ in 0..count {
             let phase = (self.samples / phase_samples) % 4;
             let symbol = self.samples / 500;
-            let dibits = [
-                self.control[phase][symbol % self.control[phase].len()],
-                self.voice[phase][symbol % self.voice[phase].len()],
-            ];
-            for c in 0..2 {
-                let (wr, wi) = steps[c][dibits[c] as usize];
+            let channels = self.voice_count.max(1) + 1;
+            let mut sum = [0.; 2];
+            for c in 0..channels {
+                let data = if self.voice_count == 0 {
+                    if c == 0 {
+                        &self.control[phase]
+                    } else {
+                        &self.voice[phase]
+                    }
+                } else if c == 0 {
+                    &self.multi_control
+                } else {
+                    &self.multi_voice[c - 1]
+                };
+                let (wr, wi) = steps[c][data[symbol % data.len()] as usize];
                 let re = self.re[c] * wr - self.im[c] * wi;
                 self.im[c] = self.re[c] * wi + self.im[c] * wr;
                 self.re[c] = re;
+                let amplitude = if self.voice_count == 0 {
+                    35.0
+                } else {
+                    80.0 / channels as f64
+                };
+                sum[0] += amplitude * self.re[c];
+                sum[1] += amplitude * self.im[c];
             }
-            iq.push((127.5 + 35.0 * self.re[0] + 35.0 * self.re[1]).round() as u8);
-            iq.push((127.5 + 35.0 * self.im[0] + 35.0 * self.im[1]).round() as u8);
+            iq.push((127.5 + sum[0]).round() as u8);
+            iq.push((127.5 + sum[1]).round() as u8);
             self.samples += 1;
             if self.samples % 4096 == 0 {
-                for c in 0..2 {
+                for c in 0..channels {
                     let n = self.re[c].hypot(self.im[c]);
                     self.re[c] /= n;
                     self.im[c] /= n;
@@ -981,7 +1101,10 @@ impl Receiver {
         }
         if let Some(v) = self.voices.iter_mut().find(|v| v.hz == hz) {
             if v.tg != tg {
-                v.voice.reset();
+                *v = ChannelDsp::new(hz, self.center, self.rate);
+                v.origin = self.block_start;
+                v.stream_id = self.next_stream;
+                self.next_stream += 1;
                 v.tg = tg;
                 v.source = 0;
                 v.clear = false;
@@ -997,15 +1120,23 @@ impl Receiver {
             v.last_grant = self.samples;
             return;
         }
-        // One selected voice stream prevents unrelated talkers being interleaved in audio.
-        if let Some(v) = self.voices.first() {
-            if self.rank(tg) < self.rank(v.tg) {
-                self.voices.clear();
+        if self.voices.len() >= self.voice_limit {
+            if let Some((index, _)) = self
+                .voices
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| self.rank(tg) < self.rank(v.tg))
+                .max_by_key(|(_, v)| self.rank(v.tg))
+            {
+                self.voices.remove(index);
             } else {
                 return;
             }
         }
         let mut v = ChannelDsp::new(hz, self.center, self.rate);
+        v.origin = self.block_start;
+        v.stream_id = self.next_stream;
+        self.next_stream += 1;
         v.tg = tg;
         v.source = source;
         v.clear = encrypted == Some(false);
@@ -1082,12 +1213,32 @@ impl Receiver {
             &self.plan,
         );
         if clear {
+            let offset = self.pcm.len();
             for slot in &d.voice {
                 let action = v.voice.decide(slot.as_ref());
                 let pcm = v.voice.render(action, slot.as_ref());
                 self.pcm.extend(pcm.iter().map(|s| *s as f32 / 32768.));
                 self.voice_frames += 1;
             }
+            let length = self.pcm.len() - offset;
+            let end = (v.origin + f.end * (self.rate as u64 / 24000)) / (self.rate as u64 / 8000);
+            let mut start = end.saturating_sub(length as u64);
+            // Symbol timing can move a few 24 kHz ticks; preserve continuous
+            // audio while retaining real gaps when an entire LDU is lost.
+            if let Some(next) = v.audio_next {
+                if start.abs_diff(next) <= 8 {
+                    start = next;
+                }
+            }
+            v.audio_next = Some(start + length as u64);
+            self.audio_chunks.push(AudioChunk {
+                id: v.stream_id,
+                talkgroup: tg,
+                frequency: hz,
+                start,
+                offset,
+                length,
+            });
             self.audio_tg = tg;
         }
         let mut e = event("voice", hz);
@@ -1108,6 +1259,101 @@ impl Receiver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn voice_pool_is_bounded_and_policy_edits_preserve_unaffected_calls() {
+        let mut r = with_plan();
+        assert!(r.set_voice_limit(2));
+        assert!(!r.set_voice_limit(0));
+        assert!(!r.set_voice_limit(9));
+        let mut enabled = vec![1; 65536];
+        r.set_enabled(&enabled);
+        r.grant(279, 6620, 42, Some(false));
+        r.grant(287, 6640, 43, Some(false));
+        r.grant(295, 6660, 44, Some(false));
+        assert_eq!(r.voices.len(), 2);
+        let first_id = r.voices[0].stream_id;
+        r.voices[0].clock = 12345;
+        enabled[6640] = 0;
+        r.set_enabled(&enabled);
+        assert_eq!(r.voices.len(), 1);
+        assert_eq!(r.voices[0].stream_id, first_id);
+        assert_eq!(r.voices[0].clock, 12345);
+        r.grant(295, 6660, 44, Some(false));
+        assert_eq!(r.voices.len(), 2);
+        assert_ne!(r.voices[0].stream_id, r.voices[1].stream_id);
+        r.grant(279, 6620, 42, Some(true));
+        assert_eq!(r.voices.len(), 1);
+        assert_eq!(r.voices[0].tg, 6660);
+        let old = r.voices[0].stream_id;
+        r.grant(295, 6680, 45, Some(false));
+        assert_ne!(
+            r.voices[0].stream_id, old,
+            "frequency reuse starts a fresh call"
+        );
+        r.set_voice_limit(1);
+        r.grant(303, 6700, 46, Some(false));
+        assert_eq!(r.voices.len(), 1);
+    }
+    fn voice_frame(tg: u16, end: u64) -> Frame {
+        Frame {
+            duid: Duid::Ldu1,
+            nac: 0x40c,
+            correction: 0,
+            data: fec::ldu_body_encode(
+                &[[0; 8]; 9],
+                &[0, 0, 0, 0, (tg >> 8) as u8, tg as u8, 0, 0, 42],
+                true,
+                0,
+            ),
+            soft: vec![],
+            end,
+            score: 0.,
+        }
+    }
+    #[test]
+    fn audio_chunks_keep_overlapping_rf_times_separate_and_preserve_missing_ldus() {
+        let mut r = with_plan();
+        r.set_voice_limit(2);
+        r.block_start = 96000;
+        r.grant(279, 6620, 42, Some(false));
+        r.grant(287, 6640, 43, Some(false));
+        r.handle_voice(0, voice_frame(6620, 10000));
+        r.handle_voice(1, voice_frame(6640, 10000));
+        assert_eq!(r.audio_chunks.len(), 2);
+        assert_eq!(r.audio_chunks[0].start, r.audio_chunks[1].start);
+        assert_eq!(r.audio_chunks[0].length, 1440);
+        assert_eq!(r.audio_chunks[1].offset, 1440);
+        assert_ne!(r.audio_chunks[0].id, r.audio_chunks[1].id);
+        let start = r.audio_chunks[0].start;
+        r.handle_voice(0, voice_frame(6620, 14320));
+        assert_eq!(r.audio_chunks[2].start, start + 1440);
+        r.handle_voice(0, voice_frame(6620, 22960));
+        assert_eq!(r.audio_chunks[3].start, start + 4320);
+        r.voices[0].ended = true;
+        r.process(&[]);
+        assert_eq!(r.voices.len(), 1);
+        assert_eq!(r.voices[0].tg, 6640);
+    }
+    #[test]
+    fn four_simultaneous_voice_carriers_decode_through_shared_iq() {
+        let mut r = Receiver::new(852400000, 853075000, 2400000).unwrap();
+        r.set_enabled(&vec![1; 65536]);
+        let mut source = ArmerTestSource::new();
+        source.set_voice_count(4);
+        let mut heard = std::collections::BTreeSet::new();
+        for _ in 0..55 {
+            r.process(&source.process(852400000, 65536));
+            for chunk in &r.audio_chunks {
+                heard.insert(chunk.talkgroup);
+            }
+            r.take_audio();
+            r.take_events();
+        }
+        assert_eq!(heard, [6620, 6640, 6660, 6680].into_iter().collect());
+        assert_eq!(r.voices.len(), 4);
+        assert!(r.valid > 20);
+        assert_eq!(r.invalid, 0);
+    }
     fn sync() -> Vec<u8> {
         (0..24).map(|i| ((FS >> (46 - i * 2)) & 3) as u8).collect()
     }

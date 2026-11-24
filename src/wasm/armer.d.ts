@@ -10,6 +10,10 @@ export class ArmerTestSource {
     [Symbol.dispose](): void;
     constructor();
     process(center: number, count: number): Uint8Array;
+    /**
+     * Optional simultaneous RF fixture. Zero preserves the rotating reference.
+     */
+    set_voice_count(count: number): boolean;
 }
 
 export class Receiver {
@@ -34,8 +38,13 @@ export class Receiver {
      */
     set_enabled(enabled: Uint8Array | number[]): boolean;
     set_listen(groups: Uint16Array | number[], hold: number): void;
+    set_voice_limit(limit: number): boolean;
     stats(): string;
     take_audio(): Float32Array;
+    /**
+     * Read descriptors BEFORE take_audio(); both outputs are owned snapshots.
+     */
+    take_audio_chunks(): string;
     take_events(): string;
 }
 
@@ -47,6 +56,7 @@ export interface InitOutput {
     readonly __wbg_receiver_free: (a: number, b: number) => void;
     readonly armertestsource_new: () => number;
     readonly armertestsource_process: (a: number, b: number, c: number) => [number, number];
+    readonly armertestsource_set_voice_count: (a: number, b: number) => number;
     readonly receiver_activity: (a: number) => [number, number];
     readonly receiver_audio_talkgroup: (a: number) => number;
     readonly receiver_information: (a: number) => [number, number];
@@ -55,8 +65,10 @@ export interface InitOutput {
     readonly receiver_recenter: (a: number, b: number) => number;
     readonly receiver_set_enabled: (a: number, b: number, c: number) => number;
     readonly receiver_set_listen: (a: number, b: number, c: number, d: number) => void;
+    readonly receiver_set_voice_limit: (a: number, b: number) => number;
     readonly receiver_stats: (a: number) => [number, number];
     readonly receiver_take_audio: (a: number) => [number, number];
+    readonly receiver_take_audio_chunks: (a: number) => [number, number];
     readonly receiver_take_events: (a: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

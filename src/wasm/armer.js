@@ -32,6 +32,15 @@ export class ArmerTestSource {
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
     }
+    /**
+     * Optional simultaneous RF fixture. Zero preserves the rotating reference.
+     * @param {number} count
+     * @returns {boolean}
+     */
+    set_voice_count(count) {
+        const ret = wasm.armertestsource_set_voice_count(this.__wbg_ptr, count);
+        return ret !== 0;
+    }
 }
 if (Symbol.dispose) ArmerTestSource.prototype[Symbol.dispose] = ArmerTestSource.prototype.free;
 
@@ -139,6 +148,14 @@ export class Receiver {
         wasm.receiver_set_listen(this.__wbg_ptr, ptr0, len0, val2);
     }
     /**
+     * @param {number} limit
+     * @returns {boolean}
+     */
+    set_voice_limit(limit) {
+        const ret = wasm.receiver_set_voice_limit(this.__wbg_ptr, limit);
+        return ret !== 0;
+    }
+    /**
      * @returns {string}
      */
     stats() {
@@ -161,6 +178,22 @@ export class Receiver {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * Read descriptors BEFORE take_audio(); both outputs are owned snapshots.
+     * @returns {string}
+     */
+    take_audio_chunks() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.receiver_take_audio_chunks(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @returns {string}

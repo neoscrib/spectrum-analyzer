@@ -4,7 +4,12 @@ import type { Settings } from "./model";
 import type { RdsStatus } from "./rds/model";
 import type { Rtl433Status } from "./rtl433/model";
 import type { OokBurst, OokStatus } from "./ook/model";
-import type { ArmerPolicy, ArmerStatus, P25Event } from "./armer/model";
+import type {
+  ArmerPolicy,
+  ArmerStatus,
+  P25Event,
+  ArmerAudioChunk,
+} from "./armer/model";
 import type {
   NfmMonitorConfig,
   NfmTelemetry,
@@ -72,6 +77,7 @@ export type DecoderEvent =
       sampleRate: 48000;
       channels: 2;
       firstSample: number;
+      armer?: ArmerAudioChunk;
     }
   | {
       type: "telemetry";

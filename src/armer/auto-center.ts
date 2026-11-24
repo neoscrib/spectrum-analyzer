@@ -17,10 +17,14 @@ export function chooseArmerCenter(
   control: number,
   calls: ActiveCall[],
   policy: ArmerPolicy,
-  protectedFrequency?: number,
+  protectedFrequency?: number | readonly number[],
 ): CenterProposal | null {
   if (!Number.isFinite(center) || !Number.isFinite(control)) return null;
   const resolve = resolver(policy);
+  const protectedFrequencies =
+    typeof protectedFrequency === "number"
+      ? [protectedFrequency]
+      : (protectedFrequency ?? []);
   const eligible = calls.filter(
     (c) =>
       Number.isFinite(c.frequency) &&
@@ -33,9 +37,9 @@ export function chooseArmerCenter(
   );
   let lo = Math.max(receiverCapabilities.minHz, control - AUTO_HALF_BAND),
     hi = Math.min(receiverCapabilities.maxHz, control + AUTO_HALF_BAND);
-  if (protectedFrequency !== undefined) {
-    lo = Math.max(lo, protectedFrequency - AUTO_HALF_BAND);
-    hi = Math.min(hi, protectedFrequency + AUTO_HALF_BAND);
+  for (const frequency of protectedFrequencies) {
+    lo = Math.max(lo, frequency - AUTO_HALF_BAND);
+    hi = Math.min(hi, frequency + AUTO_HALF_BAND);
   }
   lo = Math.ceil(lo / GRID) * GRID;
   hi = Math.floor(hi / GRID) * GRID;
@@ -79,7 +83,7 @@ export function chooseArmerCenter(
     const frequencies = [
       control,
       ...covered.map((c) => c.frequency),
-      ...(protectedFrequency === undefined ? [] : [protectedFrequency]),
+      ...protectedFrequencies,
     ];
     const min = Math.min(...frequencies),
       max = Math.max(...frequencies);
@@ -108,7 +112,7 @@ export function chooseArmerCenter(
     const frequencies = [
       control,
       ...covered.map((c) => c.frequency),
-      ...(protectedFrequency === undefined ? [] : [protectedFrequency]),
+      ...protectedFrequencies,
     ];
     const score = {
       proposal: { center: candidate, covered: groups.length, current, groups },

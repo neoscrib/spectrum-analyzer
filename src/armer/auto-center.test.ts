@@ -86,6 +86,40 @@ describe("ARMER capture-window optimization", () => {
       chooseArmerCenter(852400000, control, calls, policy, 852750000),
     ).toBeNull();
   });
+  it("retains all protected voice frequencies, not just the most recent talkgroup", () => {
+    const calls = [call(852750000), call(854900000, 2), call(855200000, 3)];
+    const protectedPlan = chooseArmerCenter(
+      853700000,
+      control,
+      calls,
+      policy,
+      [852750000, 854900000],
+    );
+    expect(protectedPlan?.covered).toBe(2);
+    for (const hz of [control, 852750000, 854900000])
+      expect(Math.abs(protectedPlan!.center - hz)).toBeLessThanOrEqual(
+        AUTO_HALF_BAND,
+      );
+    expect(
+      chooseArmerCenter(
+        853700000,
+        control,
+        calls,
+        policy,
+        [852750000, 855200000],
+      ),
+    ).toBeNull();
+    const plan = chooseArmerCenter(
+      854100000,
+      control,
+      [call(852750000), call(853900000, 2)],
+      policy,
+      [853900000],
+    );
+    expect(plan).not.toBeNull();
+    for (const hz of [control, 852750000, 853900000])
+      expect(Math.abs(plan!.center - hz)).toBeLessThanOrEqual(AUTO_HALF_BAND);
+  });
   it("matches a grid-search optimum for competing channel clusters", () => {
     let seed = 73;
     for (let trial = 0; trial < 20; trial++) {

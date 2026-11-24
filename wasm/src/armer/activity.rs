@@ -1,4 +1,4 @@
-//! Recent live voice assignments, independent of the one audible receiver.
+//! Recent live voice assignments, independent of the audible receiver pool.
 use super::{ChannelDsp, Receiver};
 use p25::frame::IdenTable;
 use serde_json::{Value, json};
@@ -117,6 +117,7 @@ impl Activity {
                 "source": voice.map_or(call.source, |v| v.source),
                 "frequency": frequency, "encrypted": encrypted,
                 "selected": voice.is_some(),
+                "streamId": voice.map(|v| v.stream_id),
                 "inCapture": frequency != 0 && frequency.abs_diff(receiver.center) < receiver.rate / 2 - 24000,
                 "phase2": receiver.plan.timeslot(channel).is_some_and(|(_, tdma)| tdma),
                 "age": receiver.samples.saturating_sub(seen) as f64 / receiver.rate as f64

@@ -67,6 +67,7 @@ import {
 import starterAliases from "./armer/starter.json";
 import { AutoCenterTiming, chooseArmerCenter } from "./armer/auto-center";
 import { listens } from "./armer/model";
+import { audibleTalkgroup, DEFAULT_ARMER_MIX } from "./armer/audio";
 import {
   compatibility,
   receiverCapabilities,
@@ -184,6 +185,7 @@ export default function App() {
   const [audioBusy, setAudioBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(50);
+  const [armerMix, setArmerMix] = useState(DEFAULT_ARMER_MIX);
   const [error, setError] = useState("");
   const [help, setHelp] = useState(false);
   const [frozen, setFrozen] = useState(false);
@@ -254,7 +256,7 @@ export default function App() {
             speedRef.current > 1
           )
         )
-          player.push(event.samples);
+          player.push(event.samples, event.armer);
         if (event.type === "telemetry" && event.protocol === "wfm") {
           stereo = event.stereo;
           if (event.rds) setRds(event.rds);
@@ -370,12 +372,16 @@ export default function App() {
   // Alias text edits do not reset control synchronization or flush audio.
   const armerListenKey = JSON.stringify([
     armerConfig.defaultListen,
+    armerConfig.maxVoices,
     armerConfig.rules.map((r) => [r.id, r.max, r.listen]),
   ]);
   useEffect(() => {
     radio.current!.setArmerPolicy(armerConfig);
-    if (settingsRef.current.decoder === "armer") audio.current!.clear();
+    audio.current!.setArmerPolicy(armerConfig);
   }, [armerListenKey]);
+  useEffect(() => {
+    audio.current!.setArmerMix(armerMix);
+  }, [armerMix]);
   useEffect(() => {
     const now = performance.now(),
       status = armerFeed.status;
@@ -392,21 +398,28 @@ export default function App() {
       autoCenterTiming.current.observe(null, now);
       return;
     }
-    const protectedCall = playing
-      ? status.calls?.find(
+    const protectedCalls = playing
+      ? (status.calls ?? []).filter(
           (c) =>
             c.selected &&
             c.encrypted === false &&
-            c.talkgroup === status.audioTalkgroup &&
-            listens(c.talkgroup, armerConfig),
+            status.audioStreams?.some((s) => s.id === c.streamId) &&
+            listens(c.talkgroup, armerConfig) &&
+            audibleTalkgroup(c.talkgroup, armerMix),
         )
-      : undefined;
+      : [];
+    // A center change resets every RF demodulator. Wait for audible calls to
+    // finish rather than repeatedly interrupting a busy site to chase grants.
+    if (protectedCalls.length) {
+      autoCenterTiming.current.observe(null, now);
+      return;
+    }
     const proposal = chooseArmerCenter(
       settings.center,
       settings.channel,
       status.calls ?? [],
       armerConfig,
-      protectedCall?.frequency,
+      protectedCalls.map((c) => c.frequency),
     );
     const center = autoCenterTiming.current.observe(proposal, now);
     if (center === null) return;
@@ -431,6 +444,7 @@ export default function App() {
     settings.channel,
     armerListenKey,
     playing,
+    armerMix,
   ]);
   useEffect(() => {
     setCenterInput(mhz(settings.center));
@@ -1115,6 +1129,8 @@ export default function App() {
             )}
             {settings.decoder === "armer" && (
               <ArmerPanel
+                mix={armerMix}
+                onMix={setArmerMix}
                 playing={playing}
                 config={armerConfig}
                 onChange={setArmerConfig}

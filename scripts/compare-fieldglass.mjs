@@ -30,7 +30,7 @@ function compare(name, center, chunks) {
     assert.equal(local.take_audio().length, 0);
     assert.equal(original.take_audio().length, 0);
   }
-  const stats = JSON.parse(local.stats()),
+  const { voiceLimit, ...stats } = JSON.parse(local.stats()),
     baseline = JSON.parse(original.stats());
   assert.deepEqual(stats, baseline, `${name}: receiver counters differ`);
   assert.deepEqual(

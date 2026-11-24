@@ -11,6 +11,25 @@ export interface TalkgroupRule {
 export interface ArmerPolicy {
   defaultListen: boolean;
   rules: TalkgroupRule[];
+  /** Number of simultaneous physical voice receivers; absent in older saves. */
+  maxVoices?: number;
+}
+export const DEFAULT_VOICE_LIMIT = 4;
+export function voiceLimit(policy: ArmerPolicy): number {
+  return Number.isInteger(policy.maxVoices) &&
+    policy.maxVoices! >= 1 &&
+    policy.maxVoices! <= 8
+    ? policy.maxVoices!
+    : DEFAULT_VOICE_LIMIT;
+}
+export interface ArmerAudioStream {
+  id: number;
+  talkgroup: number;
+  frequency: number;
+}
+export interface ArmerAudioChunk extends ArmerAudioStream {
+  /** Absolute 48 kHz frame index on the capture's sample clock. */
+  startFrame: number;
 }
 export interface ArmerConfig extends ArmerPolicy {
   siteName: string;
@@ -54,6 +73,8 @@ export interface P25Stats {
 }
 export interface ArmerStatus extends P25Stats {
   audioTalkgroup: number;
+  audioStreams?: ArmerAudioStream[];
+  voiceLimit?: number;
   controlLocked: boolean;
   quality: ControlQuality;
   information?: SystemInformation;
@@ -66,6 +87,7 @@ export interface ActiveCall {
   frequency: number;
   encrypted: boolean | null;
   selected: boolean;
+  streamId?: number | null;
   inCapture: boolean;
   phase2: boolean;
   age: number;
@@ -227,7 +249,7 @@ export function loadArmerConfig(starter: TalkgroupRule[]): ArmerConfig {
       )
     )
       throw Error("Invalid saved ARMER settings.");
-    return data;
+    return { ...data, maxVoices: voiceLimit(data) };
   } catch {
     return { ...STARTER_CONFIG, rules: starter };
   }

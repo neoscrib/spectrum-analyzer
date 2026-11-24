@@ -28,6 +28,7 @@ type aliasRule struct {
 
 func newHandler(key string, client *http.Client) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tle", tleHandler(client))
 	mux.HandleFunc("/api/armer/aliases", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")

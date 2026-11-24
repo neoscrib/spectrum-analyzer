@@ -7,3 +7,5 @@ wasm/target
 .env
 .env.*
 *.log
+
+fixtures/*.wav

@@ -10,7 +10,13 @@ import {
   validateRtl433,
   type Rtl433Options,
 } from "./rtl433/model";
+import {
+  meteorDefaults,
+  validateMeteor,
+  type MeteorOptions,
+} from "./meteor/model";
 export interface Settings {
+  meteor: MeteorOptions;
   armerAutoCenter: boolean;
   rtl433: Rtl433Options;
   ook: OokOptions;
@@ -29,6 +35,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  meteor: meteorDefaults,
   armerAutoCenter: true,
   rtl433: rtl433Defaults,
   ook: ookDefaults,
@@ -49,6 +56,7 @@ export const defaults: Settings = {
 export function validateSettings(s: Settings): void {
   if (typeof s.armerAutoCenter !== "boolean")
     throw Error("Choose whether ARMER should auto-center active talkgroups.");
+  validateMeteor(s.meteor);
   validateRtl433(s.rtl433);
   validateOok(s.ook);
   if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)
@@ -133,9 +141,10 @@ export function binRange(
   pixels: number,
   size: number,
   span: number,
+  sampleRate = SAMPLE_RATE,
 ): [number, number] {
-  const start = ((1 - span / SAMPLE_RATE) / 2) * size;
-  const binsPerPixel = ((span / SAMPLE_RATE) * size) / pixels;
+  const start = ((1 - span / sampleRate) / 2) * size;
+  const binsPerPixel = ((span / sampleRate) * size) / pixels;
   const lo = Math.max(
     0,
     Math.min(size - 1, Math.floor(start + x * binsPerPixel)),
@@ -151,6 +160,14 @@ export function readSettings(): Settings {
       ...defaults,
       ...JSON.parse(localStorage.getItem("spectrum-settings") || "{}"),
     };
+    // Enable the new default once for existing app preferences, then retain
+    // subsequent explicit opt-outs. Capture/recovery metadata is not migrated.
+    const meteor = { ...meteorDefaults, ...saved.meteor };
+    if (saved.meteor?.autoBiasDefaultVersion !== 1) {
+      meteor.autoBias = true;
+      meteor.autoBiasDefaultVersion = 1;
+    }
+    saved.meteor = meteor;
     validateSettings(saved);
     return saved;
   } catch {

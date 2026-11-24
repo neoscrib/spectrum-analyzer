@@ -133,7 +133,7 @@ try {
       );
     return (await cache.keys()).map((request) => new URL(request.url).pathname);
   });
-  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 8);
+  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 9);
   assert(cached.includes("/audio-worklet.js"));
   assert(cached.some((path) => path.includes("capture.worker")));
   assert(cached.some((path) => path.includes("decoder.worker")));
@@ -166,7 +166,16 @@ try {
   await closeOptions();
   assert(await page.evaluate(() => !!navigator.usb));
   const decoded = [];
-  for (const decoder of ["rtl433", "armer", "ook", "nfm", "am", "wwv", "wfm"]) {
+  for (const decoder of [
+    "meteor",
+    "rtl433",
+    "armer",
+    "ook",
+    "nfm",
+    "am",
+    "wwv",
+    "wfm",
+  ]) {
     console.log("Starting cold decoder offline:", decoder);
     await page.getByLabel("Decoder", { exact: true }).selectOption(decoder);
     await page.evaluate(() => {
@@ -182,6 +191,10 @@ try {
               if (kind === "am")
                 return event.type === "audio" && event.samples > 0;
               if (event.protocol !== kind) return false;
+              if (kind === "meteor")
+                return (
+                  event.protocol === "meteor" && event.type === "telemetry"
+                );
               if (kind === "rtl433" || kind === "ook")
                 return event.type === "message";
               if (kind === "armer") return event.status?.valid > 0;

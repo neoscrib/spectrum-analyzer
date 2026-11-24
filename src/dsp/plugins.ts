@@ -1,3 +1,5 @@
+import type { MeteorBiasCommand } from "../meteor/bias";
+import type { DecoderInput } from "../meteor/model";
 import type { Settings } from "../model";
 import type { DecoderEvent } from "../types";
 import type { ArmerPolicy } from "../armer/model";
@@ -9,6 +11,7 @@ import type { NfmMonitorConfig } from "../presets/model";
 export interface DecoderPlugin {
   process(iq: Uint8Array, firstSample: number): DecoderEvent[];
   dispose(): void;
+  setMeteorBias?(command: MeteorBiasCommand): void;
   setPolicy?(policy: ArmerPolicy): void;
   setHold?(id: string | null): void;
   recenter?(settings: Settings): void;
@@ -22,6 +25,7 @@ export async function createDecoder(
   s: Settings,
   policy: ArmerPolicy,
   monitor: NfmMonitorConfig | null,
+  input?: DecoderInput,
 ): Promise<DecoderPlugin | undefined> {
   switch (s.decoder) {
     case "none":
@@ -38,6 +42,8 @@ export async function createDecoder(
       return (await import("./ook-plugin")).ookPlugin(s);
     case "armer":
       return (await import("./armer-plugin")).armerPlugin(s, policy);
+    case "meteor":
+      return (await import("./meteor-plugin")).meteorPlugin(s, input);
     case "rtl433":
       return (await import("./rtl433-plugin")).rtl433Plugin(s);
   }

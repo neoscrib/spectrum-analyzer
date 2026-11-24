@@ -3139,3 +3139,54 @@ h1 {
     padding: 20px;
   }
 }
+
+/* Satellite products use the decoder panel's existing controls and colors. */
+.meteor-panel { padding: 24px; border-top: 1px solid var(--border, #2a333c); min-width: 0; }
+.meteor-panel h2 { font-size: 20px; margin: 0 0 6px; }
+.meteor-panel h2 small { font: 11px 'IBM Plex Mono',monospace; color: #81909f; }
+.meteor-panel .section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.meteor-diagnostics { display:flex; gap:24px; align-items:center; padding:20px 0; }
+.meteor-diagnostics .constellation { width:140px; height:140px; flex:0 0 140px; border:1px solid #2a333c; border-radius:8px; }
+.meteor-stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 28px; flex:1; }
+.meteor-stat-grid span { display:block; font-size:11px; color:#81909f; margin-bottom:5px; }
+.meteor-stat-grid strong { display:block; font:12px 'IBM Plex Mono',monospace; overflow-wrap:anywhere; }
+.meteor-panel details { border-top:1px solid #2a333c; padding:14px 0; }
+.meteor-panel summary { cursor:pointer; font-size:13px; color:#b8c4cf; }
+.meteor-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:20px 0 8px; border:0; min-width:0; }
+.meteor-form label { display:flex; flex-direction:column; gap:8px; color:#8d9ba8; font-size:12px; min-width:0; }
+.meteor-form .checkbox-label { flex-direction:row; align-items:center; }
+.meteor-form input:not([type=checkbox]), .meteor-form select, .meteor-form textarea { width:100%; min-width:0; }
+.meteor-form input[type=file] { font-size:12px; padding:10px; }
+.meteor-form textarea { font:11px 'IBM Plex Mono',monospace; resize:vertical; background:#151c22; color:#c2ccd5; border:1px solid #35414b; border-radius:5px; padding:10px; }
+.meteor-wide { grid-column:1/-1; }
+.meteor-actions, .meteor-channel-tabs, .meteor-image-heading { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.meteor-actions .button { width:auto; }
+.meteor-image-heading { justify-content:space-between; margin-top:14px; }
+.meteor-image-heading h3 { font-size:15px; }
+.meteor-image-heading label { font-size:12px; }
+.meteor-channel-tabs { margin:10px 0 16px; }
+.meteor-channel { background:#141b21; padding:14px; border:1px solid #2a333c; border-radius:8px; }
+.meteor-channel .channel-title { display:flex; gap:12px; justify-content:space-between; align-items:center; flex-wrap:wrap; font-size:12px; }
+.meteor-channel .channel-title button { border:1px solid #35414b; padding:8px; border-radius:5px; background:#222c35; color:#c2ccd5; cursor:pointer; }
+.meteor-channel .channel-title span, .meteor-channel small { color:#81909f; font-size:11px; }
+.meteor-scale { display:flex; align-items:center; gap:10px; font-size:12px; margin:14px 0; color:#81909f; }
+.meteor-scale select { width:auto; padding:6px 12px; }
+.meteor-image-scroll { max-height:650px; overflow:auto; cursor:grab; background:#080e13; margin-bottom:12px; overscroll-behavior:contain; }
+.meteor-image-scroll:active { cursor:grabbing; }
+.meteor-image-scroll canvas { display:block; height:auto; image-rendering:auto; }
+.meteor-passes { display:flex; align-items:center; gap:18px; }
+.meteor-passes .skyplot { width:160px; flex:0 0 160px; }
+.meteor-panel .empty-state { padding:28px 0; color:#81909f; font-size:13px; }
+@media(max-width:650px) {
+ .meteor-panel { padding:16px; }
+ .meteor-diagnostics { flex-direction:column; align-items:stretch; }
+ .meteor-diagnostics .constellation { align-self:center; }
+ .meteor-stat-grid { gap:14px; }
+ .meteor-form { grid-template-columns:minmax(0,1fr); }
+ .meteor-passes { flex-direction:column; }
+ .meteor-image-heading { align-items:flex-start; }
+}
+.meteor-bias { border-top:1px solid #2a333c; padding:4px 0 18px; }
+.meteor-bias .meteor-stat-grid { margin:12px 0 18px; }
+.meteor-bias .meteor-actions { margin-bottom:14px; }
+.meteor-bias>.checkbox-label { font-size:12px; }

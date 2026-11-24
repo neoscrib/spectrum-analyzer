@@ -1,3 +1,5 @@
+import type { MeteorBiasCommand } from "./meteor/bias";
+import type { DecoderInput, MeteorStatus, ChannelImage } from "./meteor/model";
 import type { Settings } from "./model";
 import type { RdsStatus } from "./rds/model";
 import type { Rtl433Status } from "./rtl433/model";
@@ -46,6 +48,14 @@ export interface MultiplexSpectrum {
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "reset"; protocol: "meteor" }
+  | {
+      type: "telemetry";
+      protocol: "meteor";
+      status: MeteorStatus;
+      constellation: Float32Array;
+    }
+  | { type: "image"; protocol: "meteor"; image: ChannelImage }
   | { type: "spectrum"; protocol: "wfm"; multiplex: MultiplexSpectrum }
   | { type: "message"; protocol: "rtl433"; data: Record<string, unknown> }
   | { type: "telemetry"; protocol: "rtl433"; status: Rtl433Status }
@@ -78,6 +88,7 @@ export type DecoderEvent =
       state: "searching" | "minute" | "confirmed";
     };
 export type WorkerIn =
+  | { type: "meteor-bias"; command: MeteorBiasCommand }
   | { type: "wfm-multiplex"; enabled: boolean }
   | { type: "wfm-stereo"; enabled: boolean }
   | { type: "wfm-rds"; enabled: boolean }
@@ -89,6 +100,7 @@ export type WorkerIn =
       armerPolicy?: ArmerPolicy;
       monitor?: NfmMonitorConfig | null;
       multiplex?: boolean;
+      input?: DecoderInput;
     }
   | { type: "armer-policy"; policy: ArmerPolicy; revision: number }
   | {
@@ -116,6 +128,7 @@ export type WorkerOut =
       clipping: number;
       elapsed: number;
       samples: number;
+      sampleRate?: number;
       revision: number;
     };
 export type Frame = Extract<WorkerOut, { type: "processed" }>;

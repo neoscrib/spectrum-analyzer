@@ -8,6 +8,21 @@ export async function createTestSource(
   kind: Settings["decoder"],
 ): Promise<TestSource> {
   switch (kind) {
+    case "meteor": {
+      let seed = 123456789;
+      return {
+        process: (_center, count = 65536) => {
+          const iq = new Uint8Array(count * 2);
+          for (let n = 0; n < iq.length; n++) {
+            seed ^= seed << 13;
+            seed ^= seed >>> 17;
+            seed ^= seed << 5;
+            iq[n] = 128 + ((seed >>> 0) % 7) - 3;
+          }
+          return iq;
+        },
+      };
+    }
     case "armer": {
       const native = await import("../wasm/armer");
       await native.default();

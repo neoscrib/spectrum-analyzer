@@ -1,3 +1,6 @@
+import { decoderTransfers } from "./decoder-events";
+import { liveInput, type DecoderInput } from "../meteor/model";
+import { iqStride, iqValue } from "../meteor/input";
 import { FFT_SIZE, validateSettings, type Settings } from "../model";
 import type { WorkerIn, WorkerOut } from "../types";
 import type { ArmerPolicy } from "../armer/model";
@@ -7,6 +10,7 @@ import { DecoderHost } from "./decoder-host";
 
 const host = new DecoderHost();
 let settings: Settings;
+let input: DecoderInput = liveInput;
 let samplesProcessed = 0;
 let revision = 0;
 let lastSpectrum = -Infinity;
@@ -32,7 +36,7 @@ function configure(
   samplesProcessed = 0;
   lastSpectrum = -Infinity;
   const current = ++configuration;
-  configuring = host.configure(s, policy, monitor, multiplexEnabled);
+  configuring = host.configure(s, policy, monitor, multiplexEnabled, input);
   // A slow first download must not back up USB/FFT/recording. During loading,
   // live buffers still flow through capture, with decoding starting when ready.
   if (reportErrors)
@@ -59,17 +63,21 @@ async function process(data?: ArrayBuffer) {
         );
   if (!result) throw Error("The decoder did not return its input buffer.");
   const iq = new Uint8Array(result.data);
-  samplesProcessed += iq.length / 2;
+  const count = iq.byteLength / iqStride(input.format);
+  samplesProcessed += count;
   let fft: Float32Array | undefined;
-  if (start - lastSpectrum >= 30) {
-    fft = spectrum(iq, FFT_SIZE);
+  if (count > 0 && start - lastSpectrum >= 30) {
+    fft = spectrum(iq, FFT_SIZE, input.format);
     lastSpectrum = start;
   }
   let power = 0,
     clipped = 0;
-  for (const value of iq) {
-    power += ((value - 127.5) / 128) ** 2;
-    if (value === 0 || value === 255) clipped++;
+  const view = new DataView(iq.buffer, iq.byteOffset, iq.byteLength);
+  for (let n = 0; n < count * 2; n++) {
+    const value = iqValue(iq, view, n, input.format);
+    if (!Number.isFinite(value)) throw Error("IQ contains non-finite samples.");
+    power += value * value;
+    if (input.format === "cu8" && (iq[n] === 0 || iq[n] === 255)) clipped++;
   }
   const recording = recordingId
     ? { id: recordingId, data: result.data }
@@ -80,22 +88,17 @@ async function process(data?: ArrayBuffer) {
       recording,
       spectrum: fft,
       events: result.events,
-      rms: 10 * Math.log10(power / (iq.length / 2) + 1e-12),
-      clipping: (clipped / iq.length) * 100,
+      rms: count ? 10 * Math.log10(power / count + 1e-12) : -120,
+      clipping: count ? (clipped / (count * 2)) * 100 : 0,
       elapsed: performance.now() - start,
-      samples: iq.length / 2,
+      samples: count,
+      sampleRate: input.sampleRate,
       revision,
     },
     [
       ...(recording ? [recording.data] : []),
       ...(fft ? [fft.buffer] : []),
-      ...result.events.flatMap((e) =>
-        e.type === "audio"
-          ? [e.samples.buffer]
-          : e.type === "spectrum"
-            ? [e.multiplex.bins.buffer]
-            : [],
-      ),
+      ...decoderTransfers(result.events),
     ],
   );
 }
@@ -112,10 +115,14 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
     .then(async () => {
       switch (data.type) {
         case "init":
+          input = data.input ?? liveInput;
           policy = data.armerPolicy ?? { defaultListen: true, rules: [] };
           multiplexEnabled = data.multiplex ?? false;
           await configure(data.settings, data.revision, data.monitor);
           send({ type: "ready" });
+          break;
+        case "meteor-bias":
+          await host.request({ type: "meteor-bias", command: data.command });
           break;
         case "wfm-multiplex":
           multiplexEnabled = data.enabled;

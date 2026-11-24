@@ -118,3 +118,29 @@ it("enables ARMER auto-centering when migrating existing saved receiver settings
     vi.unstubAllGlobals();
   }
 });
+it("enables automatic Meteor bias once for existing settings, then preserves opt-outs", () => {
+  const { autoBiasDefaultVersion: _, ...oldMeteor } = defaults.meteor;
+  const previous = {
+    ...defaults,
+    gain: 22.9,
+    meteor: { ...oldMeteor, autoBias: false },
+  };
+  vi.stubGlobal("localStorage", { getItem: () => JSON.stringify(previous) });
+  try {
+    const migrated = readSettings();
+    expect(migrated.gain).toBe(22.9);
+    expect(migrated.meteor).toMatchObject({
+      autoBias: true,
+      autoBiasDefaultVersion: 1,
+      doppler: false,
+    });
+    const optedOut = {
+      ...migrated,
+      meteor: { ...migrated.meteor, autoBias: false },
+    };
+    vi.stubGlobal("localStorage", { getItem: () => JSON.stringify(optedOut) });
+    expect(readSettings().meteor.autoBias).toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

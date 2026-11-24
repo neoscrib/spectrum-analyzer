@@ -1,6 +1,6 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
 export type DecoderId =
-  "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook" | "rtl433";
+  "meteor" | "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook" | "rtl433";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -10,7 +10,9 @@ export interface DecoderManifest {
     bandwidthHz: number;
     inputSampleRate?: number;
   };
-  outputs: ("audio" | "telemetry" | "timecode" | "sync" | "message")[];
+  outputs: (
+    "audio" | "telemetry" | "timecode" | "sync" | "message" | "image"
+  )[];
   bandwidths: number[];
 }
 export const decoders: DecoderManifest[] = [
@@ -81,6 +83,14 @@ export const decoders: DecoderManifest[] = [
     },
     outputs: ["message", "telemetry"],
     bandwidths: [50000, 100000, 150000, 200000],
+  },
+  {
+    id: "meteor",
+    name: "Meteor-M · LRPT satellite",
+    description: "QPSK / OQPSK · LRPT frames + six image channels",
+    requirements: { minSampleRate: 180000, bandwidthHz: 180000 },
+    outputs: ["image", "telemetry"],
+    bandwidths: [180000],
   },
   {
     id: "armer",

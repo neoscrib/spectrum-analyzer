@@ -1,0 +1,9 @@
+Ported from /home/tanner/code/meteor-m working tree, 2026-11-24 (no committed HEAD).
+meteor_demod: bf8f6eb14b1abd952c7ec46b4a9b6e64d4d4d885, MIT
+meteor_decode: e7ca456ea969dc4834b5544c3789de1dd5d2f663, MIT
+Preserved local reference fixes: docs/meteor-reference.md.
+Spectrum adapter/lifecycle differences: docs/meteor.md.
+Additional changes: channel.c bounds missing-strip padding at 12000 scan rows;
+browser.c bounds reported height and adds browser_close for explicit cleanup.
+
+Optional pre-demodulation baseband tap and phase-preserving PLL frequency handoff added for confidence-gated bias estimation and automatic correction.

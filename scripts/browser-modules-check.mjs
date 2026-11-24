@@ -7,6 +7,7 @@ const browser = await chromium.launch({
 });
 const url = process.env.APP_URL || "http://127.0.0.1:5176";
 const expected = {
+  meteor: ["meteor"],
   none: [],
   wfm: ["dsp_core", "wfm"],
   am: ["am", "dsp_core"],
@@ -19,7 +20,11 @@ const expected = {
 const results = [];
 function moduleName(url) {
   const file = new URL(url).pathname.split("/").at(-1);
-  return file.startsWith("rtl433") ? "rtl433" : file.split("_bg")[0];
+  return file.startsWith("rtl433")
+    ? "rtl433"
+    : file.startsWith("meteor")
+      ? "meteor"
+      : file.split("_bg")[0];
 }
 async function setup() {
   const context = await browser.newContext({ serviceWorkers: "block" }),
@@ -137,6 +142,7 @@ try {
     .find((worker) => /capture\.worker/.test(worker.url()));
   assert(capture);
   for (const decoder of [
+    "meteor",
     "nfm",
     "ook",
     "armer",

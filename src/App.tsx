@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import type { MeteorBiasCommand } from "./meteor/bias";
+import { MeteorImageStore } from "./meteor/image-store";
+import type { MeteorStatus, ChannelImage } from "./meteor/model";
+import type { MeteorReplayRequest } from "./components/MeteorPanel";
+import type { ReplayState } from "./radio";
+const MeteorPanel = lazy(() =>
+  import("./components/MeteorPanel").then((m) => ({ default: m.MeteorPanel })),
+);
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   Activity,
   AudioLines,
@@ -101,6 +109,22 @@ const emptyMetrics: Metrics = {
 
 export default function App() {
   const [settings, setSettings] = useState(readSettings);
+  const [meteorStatus, setMeteorStatus] = useState<MeteorStatus | null>(null);
+  const [meteorImages, setMeteorImages] = useState<ChannelImage[]>([]);
+  const [meteorConstellation, setMeteorConstellation] =
+    useState<Float32Array | null>(null);
+  const meteorStore = useRef(new MeteorImageStore());
+  const [replay, setReplay] = useState<ReplayState | null>(null);
+  const [replayView, setReplayView] = useState<{
+    settings: Settings;
+    sampleRate: number;
+  } | null>(null);
+  function resetMeteor() {
+    meteorStore.current.clear();
+    setMeteorStatus(null);
+    setMeteorImages([]);
+    setMeteorConstellation(null);
+  }
   const [recording, setRecording] = useState<RecordingState>(idleRecording);
   const [recordPreparing, setRecordPreparing] = useState(false);
   const recordIntent = useRef(false);
@@ -153,7 +177,9 @@ export default function App() {
     auto: settings.gain === null,
     ppm: String(settings.ppm),
   });
-  const [source, setSource] = useState<"idle" | "live" | "test">("idle");
+  const [source, setSource] = useState<"idle" | "live" | "test" | "replay">(
+    "idle",
+  );
   const [busy, setBusy] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -198,10 +224,24 @@ export default function App() {
     const session = radio.current!,
       player = audio.current!;
     session.onRecording = setRecording;
+    session.onReplay = (state) => {
+      setReplay(state);
+      if (state.phase === "complete") setSource("idle");
+    };
     session.onFrame = (frame, backlog) => {
       if (frame.spectrum) fft.current = frame.spectrum;
       let stereo = false;
       for (const event of frame.events) {
+        if (event.type === "reset" && event.protocol === "meteor")
+          resetMeteor();
+        if (event.type === "telemetry" && event.protocol === "meteor") {
+          setMeteorStatus(event.status);
+          setMeteorConstellation(event.constellation);
+        }
+        if (event.type === "image" && event.protocol === "meteor") {
+          meteorStore.current.merge(event.image);
+          setMeteorImages(meteorStore.current.images());
+        }
         if (event.type === "spectrum" && multiplexVisible.current)
           multiplex.current = event.multiplex;
         if (event.type === "selection" && event.protocol === "nfm")
@@ -265,7 +305,11 @@ export default function App() {
         setMetrics({
           rms: frame.rms,
           clipping: frame.clipping,
-          cpu: (frame.elapsed / ((frame.samples / SAMPLE_RATE) * 1000)) * 100,
+          cpu: frame.samples
+            ? (frame.elapsed /
+                ((frame.samples / (frame.sampleRate ?? SAMPLE_RATE)) * 1000)) *
+              100
+            : 0,
           backlog,
           samples,
           stereo,
@@ -399,7 +443,13 @@ export default function App() {
   ): Promise<boolean> {
     if (busy) return false;
     try {
+      if (source === "replay")
+        throw Error(
+          "Stop replay before changing receiver or decoder settings.",
+        );
       validateSettings(next);
+      setReplayView(null);
+      resetMeteor();
       if (active && settingsRef.current.decoder === "armer")
         autoCenterTiming.current.defer(performance.now());
       setError("");
@@ -459,6 +509,8 @@ export default function App() {
     setError("");
     setBusy(true);
     setFrozen(false);
+    resetMeteor();
+    setReplayView(null);
     autoCenterTiming.current.reset();
     fft.current = null;
     setMetrics(emptyMetrics);
@@ -496,54 +548,61 @@ export default function App() {
           }
         : settingsRef.current);
     const testProfile =
-      current.decoder === "rtl433"
+      current.decoder === "meteor"
         ? {
-            center: 433750000,
-            channel: 433920000,
+            center: 137750000,
+            channel: 137900000,
             span: 600000,
-            decoder: "rtl433" as const,
+            decoder: "meteor" as const,
           }
-        : current.decoder === "ook"
+        : current.decoder === "rtl433"
           ? {
               center: 433750000,
               channel: 433920000,
               span: 600000,
-              decoder: "ook" as const,
+              decoder: "rtl433" as const,
             }
-          : current.decoder === "nfm"
+          : current.decoder === "ook"
             ? {
-                center: 462400000,
-                channel: 462562500,
+                center: 433750000,
+                channel: 433920000,
                 span: 600000,
-                decoder: "nfm" as const,
+                decoder: "ook" as const,
               }
-            : current.decoder === "armer"
+            : current.decoder === "nfm"
               ? {
-                  center: 852400000,
-                  channel: 853075000,
-                  span: SAMPLE_RATE,
-                  decoder: "armer" as const,
+                  center: 462400000,
+                  channel: 462562500,
+                  span: 600000,
+                  decoder: "nfm" as const,
                 }
-              : current.decoder === "wwv"
+              : current.decoder === "armer"
                 ? {
-                    center: 25050000,
-                    channel: 25000000,
-                    span: 150000,
-                    decoder: "wwv" as const,
+                    center: 852400000,
+                    channel: 853075000,
+                    span: SAMPLE_RATE,
+                    decoder: "armer" as const,
                   }
-                : current.decoder === "am"
+                : current.decoder === "wwv"
                   ? {
-                      center: 120000000,
-                      channel: 120100000,
-                      span: 300000,
-                      decoder: "am" as const,
+                      center: 25050000,
+                      channel: 25000000,
+                      span: 150000,
+                      decoder: "wwv" as const,
                     }
-                  : {
-                      center: defaults.center,
-                      channel: defaults.channel,
-                      span: current.span,
-                      decoder: "wfm" as const,
-                    };
+                  : current.decoder === "am"
+                    ? {
+                        center: 120000000,
+                        channel: 120100000,
+                        span: 300000,
+                        decoder: "am" as const,
+                      }
+                    : {
+                        center: defaults.center,
+                        channel: defaults.channel,
+                        span: current.span,
+                        decoder: "wfm" as const,
+                      };
     const testManifest = decoders.find((d) => d.id === testProfile.decoder)!;
     const s =
       kind === "test" && !override
@@ -570,6 +629,51 @@ export default function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  function meteorBiasControl(command: MeteorBiasCommand) {
+    if (source !== "replay") {
+      if (command.action === "apply")
+        setSettings((s) => ({
+          ...s,
+          meteor: { ...s.meteor, frequencyBiasHz: command.biasHz },
+        }));
+      if (command.action === "auto")
+        setSettings((s) => ({
+          ...s,
+          meteor: { ...s.meteor, autoBias: command.enabled },
+        }));
+    }
+    radio.current!.setMeteorBias(command);
+  }
+  async function startMeteorReplay(request: MeteorReplayRequest) {
+    if (busy || active) return;
+    setBusy(true);
+    setError("");
+    resetMeteor();
+    setReplay(null);
+    fft.current = null;
+    setMetrics(emptyMetrics);
+    audio.current!.pause();
+    audio.current!.clear();
+    setPlaying(false);
+    setFrozen(false);
+    try {
+      await radio.current!.replay(
+        request.file,
+        request.source,
+        request.settings,
+        request.options,
+      );
+      setReplayView({
+        settings: request.settings,
+        sampleRate: request.source.sampleRate,
+      });
+      setSource("replay");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -646,7 +750,15 @@ export default function App() {
   const zoom = (factor: number) =>
     setSettings((s) => ({
       ...s,
-      span: Math.round(Math.max(25000, Math.min(SAMPLE_RATE, s.span * factor))),
+      span: Math.round(
+        Math.max(
+          25000,
+          Math.min(
+            replayView?.sampleRate ?? SAMPLE_RATE,
+            Math.min(s.span, replayView?.sampleRate ?? SAMPLE_RATE) * factor,
+          ),
+        ),
+      ),
     }));
   const selectChannel = (channel: number) => {
     if (!busy) void apply({ ...settingsRef.current, channel });
@@ -654,13 +766,16 @@ export default function App() {
   const monitoredPreset = appliedMonitor?.presets.find(
     (p) => p.id === nfmFeed.status?.selectedId,
   );
-  const displaySettings = monitoredPreset
-    ? {
-        ...settings,
-        channel: monitoredPreset.frequency,
-        bandwidth: monitoredPreset.bandwidth,
-      }
-    : settings;
+  const inputRate = replayView?.sampleRate ?? SAMPLE_RATE;
+  const displaySettings = replayView
+    ? { ...replayView.settings, span: Math.min(settings.span, inputRate) }
+    : monitoredPreset
+      ? {
+          ...settings,
+          channel: monitoredPreset.frequency,
+          bandwidth: monitoredPreset.bandwidth,
+        }
+      : settings;
 
   return (
     <div className="app-shell">
@@ -702,9 +817,11 @@ export default function App() {
               ? "Applying…"
               : source === "live"
                 ? "RTL-SDR connected"
-                : source === "test"
-                  ? "Generated test signal"
-                  : "Receiver disconnected"}
+                : source === "replay"
+                  ? "Replaying local I/Q"
+                  : source === "test"
+                    ? "Generated test signal"
+                    : "Receiver disconnected"}
           </div>
         </div>
 
@@ -764,12 +881,20 @@ export default function App() {
                     min="24"
                     max="1766"
                     step="0.0001"
-                    value={centerInput}
+                    value={
+                      source === "replay" && replayView
+                        ? mhz(replayView.settings.center)
+                        : centerInput
+                    }
                     onChange={(e) => setCenterInput(e.target.value)}
-                    disabled={busy}
+                    disabled={busy || source === "replay"}
                   />
                   <span>MHz</span>
-                  <button type="submit" className="tune-button" disabled={busy}>
+                  <button
+                    type="submit"
+                    className="tune-button"
+                    disabled={busy || source === "replay"}
+                  >
                     Tune
                   </button>
                 </div>
@@ -781,14 +906,14 @@ export default function App() {
                     className="icon-button"
                     aria-label="Zoom in"
                     onClick={() => zoom(0.5)}
-                    disabled={settings.span <= 25000}
+                    disabled={displaySettings.span <= 25000}
                   >
                     <Minus size={15} />
                   </button>
                   <div className="select-wrap">
                     <select
                       id="span"
-                      value={settings.span}
+                      value={displaySettings.span}
                       onChange={(e) =>
                         setSettings((s) => ({
                           ...s,
@@ -805,9 +930,11 @@ export default function App() {
                           150000,
                           75000,
                           25000,
-                          settings.span,
+                          displaySettings.span,
+                          inputRate,
                         ]),
                       ]
+                        .filter((v) => v <= inputRate)
                         .sort((a, b) => b - a)
                         .map((v) => (
                           <option key={v} value={v}>
@@ -821,7 +948,7 @@ export default function App() {
                     className="icon-button"
                     aria-label="Zoom out"
                     onClick={() => zoom(2)}
-                    disabled={settings.span >= SAMPLE_RATE}
+                    disabled={displaySettings.span >= inputRate}
                   >
                     <Plus size={15} />
                   </button>
@@ -830,6 +957,7 @@ export default function App() {
             </div>
             <Spectrum
               data={fft}
+              sampleRate={inputRate}
               settings={displaySettings}
               source={source}
               floor={floor}
@@ -845,21 +973,25 @@ export default function App() {
                 {frozen
                   ? "View frozen · reception continues"
                   : active
-                    ? source === "test"
-                      ? settings.decoder === "wwv"
-                        ? `Synthetic WWV IQ · ${testSpeed}×`
-                        : settings.decoder === "rtl433"
-                          ? "Generated rtl_433 IQ · OOK + FSK devices"
-                          : settings.decoder === "ook"
-                            ? "Generated OOK / ASK IQ · PWM test payload A6"
-                            : settings.decoder === "nfm"
-                              ? "Generated NFM IQ · scheduled FRS test calls"
-                              : settings.decoder === "armer"
-                                ? "Generated P25 IQ · test vocoder data"
-                                : settings.decoder === "am"
-                                  ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
-                                  : "Synthetic IQ · L 1 kHz / R 2 kHz"
-                      : "Live IQ stream"
+                    ? source === "replay"
+                      ? `Recorded I/Q · ${(inputRate / 1e6).toFixed(4)} MSPS`
+                      : source === "test"
+                        ? settings.decoder === "meteor"
+                          ? "Generated noise · acquisition test, no satellite imagery"
+                          : settings.decoder === "wwv"
+                            ? `Synthetic WWV IQ · ${testSpeed}×`
+                            : settings.decoder === "rtl433"
+                              ? "Generated rtl_433 IQ · OOK + FSK devices"
+                              : settings.decoder === "ook"
+                                ? "Generated OOK / ASK IQ · PWM test payload A6"
+                                : settings.decoder === "nfm"
+                                  ? "Generated NFM IQ · scheduled FRS test calls"
+                                  : settings.decoder === "armer"
+                                    ? "Generated P25 IQ · test vocoder data"
+                                    : settings.decoder === "am"
+                                      ? "Synthetic AM IQ · 1 kHz tone + adjacent station"
+                                      : "Synthetic IQ · L 1 kHz / R 2 kHz"
+                        : "Live IQ stream"
                     : metrics.samples
                       ? "Stopped · last received spectrum"
                       : "Waiting for receiver"}
@@ -894,6 +1026,32 @@ export default function App() {
                 Click spectrum to tune decoder
               </span>
             </div>
+            {settings.decoder === "meteor" && (
+              <Suspense
+                fallback={<p className="caption">Loading Meteor controls…</p>}
+              >
+                <MeteorPanel
+                  settings={settings}
+                  status={meteorStatus}
+                  images={meteorImages}
+                  constellation={meteorConstellation}
+                  source={source}
+                  busy={busy}
+                  replay={replay}
+                  onReplay={startMeteorReplay}
+                  onBiasControl={meteorBiasControl}
+                  onApply={(meteor, frequency) =>
+                    apply({
+                      ...settings,
+                      meteor,
+                      ...(frequency === undefined
+                        ? {}
+                        : { channel: frequency, center: frequency - 150000 }),
+                    })
+                  }
+                />
+              </Suspense>
+            )}
             {settings.decoder === "wwv" && (
               <WwvPanel
                 status={wwv}
@@ -997,12 +1155,15 @@ export default function App() {
               <div className="capture-row">
                 <span>Capture rate</span>
                 <strong>
-                  2.4 <small>MSPS</small>
+                  {(inputRate / 1e6).toFixed(inputRate === SAMPLE_RATE ? 1 : 4)}{" "}
+                  <small>MSPS</small>
                 </strong>
               </div>
               <p className="caption">
-                Fixed acquisition rate. Display span and decoder bandwidth are
-                independent.
+                {replayView
+                  ? "Recorded sample rate."
+                  : "Fixed acquisition rate."}{" "}
+                Display span and decoder bandwidth are independent.
               </p>
               {active ? (
                 <button
@@ -1011,7 +1172,11 @@ export default function App() {
                   onClick={() => void stop()}
                 >
                   <Square size={15} fill="currentColor" /> Stop{" "}
-                  {source === "test" ? "test signal" : "receiver"}
+                  {source === "replay"
+                    ? "replay"
+                    : source === "test"
+                      ? "test signal"
+                      : "receiver"}
                 </button>
               ) : (
                 <>
@@ -1029,19 +1194,21 @@ export default function App() {
                     onClick={() => void start("test")}
                   >
                     <FlaskConical size={15} />{" "}
-                    {settings.decoder === "rtl433"
-                      ? "Try rtl_433 test signal"
-                      : settings.decoder === "ook"
-                        ? "Try OOK / ASK test signal"
-                        : settings.decoder === "nfm"
-                          ? "Try NFM test signal"
-                          : settings.decoder === "armer"
-                            ? "Try ARMER test signal"
-                            : settings.decoder === "wwv"
-                              ? "Try WWV test signal"
-                              : settings.decoder === "am"
-                                ? "Try AM test signal"
-                                : "Try FM test signal"}
+                    {settings.decoder === "meteor"
+                      ? "Try Meteor noise test signal"
+                      : settings.decoder === "rtl433"
+                        ? "Try rtl_433 test signal"
+                        : settings.decoder === "ook"
+                          ? "Try OOK / ASK test signal"
+                          : settings.decoder === "nfm"
+                            ? "Try NFM test signal"
+                            : settings.decoder === "armer"
+                              ? "Try ARMER test signal"
+                              : settings.decoder === "wwv"
+                                ? "Try WWV test signal"
+                                : settings.decoder === "am"
+                                  ? "Try AM test signal"
+                                  : "Try FM test signal"}
                   </button>
                 </>
               )}
@@ -1061,7 +1228,7 @@ export default function App() {
                 <select
                   id="decoder"
                   value={settings.decoder}
-                  disabled={busy}
+                  disabled={busy || source === "replay"}
                   onChange={(e) => {
                     const decoder = e.target.value as Settings["decoder"];
                     const manifest = decoders.find((d) => d.id === decoder)!;
@@ -1072,15 +1239,25 @@ export default function App() {
                         decoder === "none"
                           ? settings.bandwidth
                           : manifest.requirements.bandwidthHz,
-                      ...(decoder === "wwv"
-                        ? { center: 25050000, channel: 25000000, span: 150000 }
-                        : decoder === "armer"
+                      ...(decoder === "meteor"
+                        ? {
+                            center: 137750000,
+                            channel: 137900000,
+                            span: 600000,
+                          }
+                        : decoder === "wwv"
                           ? {
-                              center: armerConfig.controls[0] - 675000,
-                              channel: armerConfig.controls[0],
-                              span: SAMPLE_RATE,
+                              center: 25050000,
+                              channel: 25000000,
+                              span: 150000,
                             }
-                          : {}),
+                          : decoder === "armer"
+                            ? {
+                                center: armerConfig.controls[0] - 675000,
+                                channel: armerConfig.controls[0],
+                                span: SAMPLE_RATE,
+                              }
+                            : {}),
                     });
                   }}
                 >
@@ -1107,7 +1284,9 @@ export default function App() {
                 </p>
               )}
               <fieldset
-                disabled={settings.decoder === "none" || busy}
+                disabled={
+                  settings.decoder === "none" || busy || source === "replay"
+                }
                 className="decoder-fields"
               >
                 <form
@@ -1442,23 +1621,25 @@ export default function App() {
                   <strong>
                     {!active || settings.decoder === "none"
                       ? "—"
-                      : settings.decoder === "rtl433"
-                        ? "Device messages · JSON"
-                        : settings.decoder === "ook"
-                          ? "Pulse timings + interpreted data"
-                          : settings.decoder === "nfm"
-                            ? "Mono · narrowband FM"
-                            : settings.decoder === "armer"
-                              ? "Mono · P25 IMBE"
-                              : settings.decoder === "wwv"
-                                ? "Mono · AM voice + time code"
-                                : settings.decoder === "am"
-                                  ? "Mono · AM envelope"
-                                  : !settings.stereo
-                                    ? "Mono · forced"
-                                    : metrics.stereo
-                                      ? "Stereo · pilot locked"
-                                      : "Mono · awaiting stereo pilot"}
+                      : settings.decoder === "meteor"
+                        ? "Satellite images · LRPT"
+                        : settings.decoder === "rtl433"
+                          ? "Device messages · JSON"
+                          : settings.decoder === "ook"
+                            ? "Pulse timings + interpreted data"
+                            : settings.decoder === "nfm"
+                              ? "Mono · narrowband FM"
+                              : settings.decoder === "armer"
+                                ? "Mono · P25 IMBE"
+                                : settings.decoder === "wwv"
+                                  ? "Mono · AM voice + time code"
+                                  : settings.decoder === "am"
+                                    ? "Mono · AM envelope"
+                                    : !settings.stereo
+                                      ? "Mono · forced"
+                                      : metrics.stereo
+                                        ? "Stereo · pilot locked"
+                                        : "Mono · awaiting stereo pilot"}
                   </strong>
                 </div>
                 <button
@@ -1512,17 +1693,19 @@ export default function App() {
                   <span>{volume}%</span>
                 </div>
                 <span className="audio-caption">
-                  {settings.decoder === "rtl433"
-                    ? "Data decoder · inspect device messages below the spectrum"
-                    : settings.decoder === "ook"
-                      ? "Data decoder · inspect captured bursts below the spectrum"
-                      : source === "test" &&
-                          settings.decoder === "wwv" &&
-                          testSpeed > 1
-                        ? "Switch the WWV test to 1× to hear audio"
-                        : playing
-                          ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
-                          : "Audio starts only when you press play"}
+                  {settings.decoder === "meteor"
+                    ? "Image decoder · inspect satellite channels below the spectrum"
+                    : settings.decoder === "rtl433"
+                      ? "Data decoder · inspect device messages below the spectrum"
+                      : settings.decoder === "ook"
+                        ? "Data decoder · inspect captured bursts below the spectrum"
+                        : source === "test" &&
+                            settings.decoder === "wwv" &&
+                            testSpeed > 1
+                          ? "Switch the WWV test to 1× to hear audio"
+                          : playing
+                            ? `48 kHz PCM · ${metrics.stereo ? "stereo" : "mono"} · ${source === "test" ? "generated test tones" : settings.decoder.toUpperCase()}`
+                            : "Audio starts only when you press play"}
                 </span>
               </div>
             </section>
@@ -1617,7 +1800,7 @@ export default function App() {
 
             <IqRecordingPanel
               state={recording}
-              active={active}
+              active={active && source !== "replay"}
               busy={busy}
               preparing={recordPreparing}
               onStart={startRecording}
@@ -1628,7 +1811,7 @@ export default function App() {
 
           <PresetPanel
             settings={settings}
-            source={source}
+            source={source === "replay" ? "idle" : source}
             busy={busy || recordLocked}
             scanPaused={recordLocked}
             feed={nfmFeed}

@@ -1,3 +1,8 @@
+import type { MeteorBiasCommand } from "./meteor/bias";
+import { liveInput, type DecoderInput } from "./meteor/model";
+import type { ReplayOptions } from "./meteor/types";
+import { replayRange } from "./meteor/replay";
+import type { IqSource } from "./meteor/iq";
 import {
   RTL2832U_Provider,
   type RtlDevice,
@@ -34,7 +39,17 @@ type Command = {
   resolve: () => void;
   reject: (e: Error) => void;
 };
+export interface ReplayState {
+  phase: "idle" | "playing" | "complete" | "stopped";
+  name: string;
+  bytes: number;
+  total: number;
+  seconds: number;
+  sampleRate: number;
+}
 export class RadioSession {
+  onReplay: (state: ReplayState) => void = () => {};
+  private replayState?: ReplayState;
   onFrame: (frame: Frame, backlog: number) => void = () => {};
   onError: (message: string) => void = () => {};
   onRecording: (state: RecordingState) => void = () => {};
@@ -54,12 +69,26 @@ export class RadioSession {
       ["recording", "saving"].includes(this.recorder.state.phase)
     )
       throw Error("Finish the current IQ recording first.");
+    if (this.source === "replay")
+      throw Error(
+        "Replay reads the original IQ file; stop replay before recording a source.",
+      );
     const recorder = new IqRecorder(
       sink,
       {
         filename: sink.filename,
         source: this.source,
-        settings: this.settings,
+        settings:
+          this.settings.decoder === "meteor" &&
+          this.meteorAppliedBias !== undefined
+            ? {
+                ...this.settings,
+                meteor: {
+                  ...this.settings.meteor,
+                  frequencyBiasHz: this.meteorAppliedBias,
+                },
+              }
+            : this.settings,
         startedAt: new Date().toISOString(),
       },
       seconds,
@@ -97,7 +126,7 @@ export class RadioSession {
   private provider?: RTL2832U_Provider;
   private worker?: Worker;
   private running = false;
-  private source: "live" | "test" = "live";
+  private source: "live" | "test" | "replay" = "live";
   private settings?: Settings;
   private revision = 0;
   private busy = false;
@@ -107,6 +136,24 @@ export class RadioSession {
   private timer?: ReturnType<typeof setTimeout>;
   private resumeTest?: () => void;
   private testSpeed = 1;
+  private meteorAppliedBias: number | undefined;
+  setMeteorBias(command: MeteorBiasCommand) {
+    if (this.settings?.decoder !== "meteor") return;
+    if (command.action === "apply") this.meteorAppliedBias = command.biasHz;
+    if (this.source !== "replay") {
+      if (command.action === "apply")
+        this.settings = {
+          ...this.settings,
+          meteor: { ...this.settings.meteor, frequencyBiasHz: command.biasHz },
+        };
+      if (command.action === "auto")
+        this.settings = {
+          ...this.settings,
+          meteor: { ...this.settings.meteor, autoBias: command.enabled },
+        };
+    }
+    if (this.worker) this.post({ type: "meteor-bias", command });
+  }
   private multiplexEnabled = false;
   setWfmMultiplex(enabled: boolean) {
     this.multiplexEnabled = enabled;
@@ -145,8 +192,10 @@ export class RadioSession {
   private async init(
     settings: Settings,
     monitor: NfmMonitorConfig | null = null,
+    input: DecoderInput = liveInput,
   ) {
     this.settings = settings;
+    this.meteorAppliedBias = undefined;
     this.worker = new Worker(
       new URL("./dsp/capture.worker.ts", import.meta.url),
       { type: "module" },
@@ -171,6 +220,13 @@ export class RadioSession {
           return;
         }
         this.busy = false;
+        for (const event of data.events)
+          if (
+            event.type === "telemetry" &&
+            event.protocol === "meteor" &&
+            event.status.bias
+          )
+            this.meteorAppliedBias = event.status.bias.appliedHz;
         if (data.recording?.id === this.recordingId)
           this.recorder?.push(data.recording.data);
         if (data.revision === this.revision)
@@ -196,6 +252,7 @@ export class RadioSession {
       revision: ++this.revision,
       armerPolicy: this.armerPolicy,
       multiplex: this.multiplexEnabled,
+      input,
       monitor,
     });
     try {
@@ -282,6 +339,93 @@ export class RadioSession {
       throw error;
     }
   }
+  /** Sequential reads and one transferable buffer in flight: no whole-file allocation. */
+  async replay(
+    file: File,
+    source: IqSource,
+    settings: Settings,
+    options: ReplayOptions,
+  ): Promise<void> {
+    validateSettings(settings);
+    if (this.running || this.worker || this.device || this.stopping)
+      throw Error("Stop the current source before replaying IQ.");
+    if (settings.decoder !== "meteor")
+      throw Error(
+        "This replay interface currently supports Meteor-M recordings.",
+      );
+    const range = replayRange(source, options);
+    try {
+      await this.init(settings, null, {
+        format: source.format,
+        sampleRate: source.sampleRate,
+        replay: options,
+      });
+      this.source = "replay";
+      this.running = true;
+      this.replayState = {
+        phase: "playing",
+        name: file.name,
+        bytes: 0,
+        total: range.length,
+        seconds: 0,
+        sampleRate: source.sampleRate,
+      };
+      this.onReplay(this.replayState);
+      this.loop = this.replayLoop(file, range);
+    } catch (error) {
+      await this.stop();
+      throw error;
+    }
+  }
+  private async replayLoop(
+    file: File,
+    range: { offset: number; length: number; stride: number },
+  ) {
+    let lastProgress = performance.now();
+    try {
+      for (
+        let at = 0;
+        at < range.length && this.running;
+        at += 65536 * range.stride
+      ) {
+        const end = Math.min(range.length, at + 65536 * range.stride);
+        const data = await file
+          .slice(range.offset + at, range.offset + end)
+          .arrayBuffer();
+        if (!this.running) break;
+        await this.replayBlock(data);
+        if (!this.running) break;
+        this.replayState = {
+          ...this.replayState!,
+          bytes: end,
+          seconds: end / range.stride / this.replayState!.sampleRate,
+        };
+        if (performance.now() - lastProgress >= 180) {
+          this.onReplay(this.replayState);
+          lastProgress = performance.now();
+        }
+      }
+      if (this.running) {
+        await this.replayBlock(new ArrayBuffer(0)); // Publish the last image tail and statistics.
+        if (!this.running) return;
+        this.running = false;
+        this.worker?.terminate();
+        this.worker = undefined;
+        this.replayState = { ...this.replayState!, phase: "complete" };
+        this.onReplay(this.replayState);
+      }
+    } catch (error) {
+      if (this.running)
+        this.fail(error instanceof Error ? error.message : String(error));
+    }
+  }
+  private replayBlock(data: ArrayBuffer) {
+    return new Promise<void>((resolve) => {
+      this.resumeTest = resolve;
+      this.busy = true;
+      this.post({ type: "iq", data, revision: this.revision }, [data]);
+    });
+  }
   private async readLoop(device: RtlDevice) {
     // Keep transfers queued continuously, as in Fieldglass. Waiting for pairs
     // creates a refill barrier even when the first buffer is already available.
@@ -349,6 +493,7 @@ export class RadioSession {
     recenter = false,
   ) {
     this.queue = [];
+    this.meteorAppliedBias = undefined;
     this.settings = settings;
     const revision = ++this.revision;
     this.post(
@@ -363,6 +508,8 @@ export class RadioSession {
   ): Promise<void> {
     validateSettings(settings);
     if (!this.running) throw Error("Start a source before adjusting it.");
+    if (this.source === "replay")
+      throw Error("Stop replay before changing receiver or decoder settings.");
     await this.stopRecording("Receiver or decoder configuration changed");
     if (!this.running) throw Error("Reception stopped.");
     if (this.source === "test") {
@@ -433,7 +580,12 @@ export class RadioSession {
     const recording = this.stopRecording(reason);
     this.running = false;
     clearTimeout(this.timer);
+    this.resumeTest?.();
     this.resumeTest = undefined;
+    if (this.replayState?.phase === "playing") {
+      this.replayState = { ...this.replayState, phase: "stopped" };
+      this.onReplay(this.replayState);
+    }
     this.queue = [];
     this.busy = false;
     for (const command of this.commands.splice(0))

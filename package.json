@@ -19,7 +19,7 @@
     "test:browser:armer": "node scripts/browser-armer-check.mjs",
     "test:fieldglass": "node scripts/compare-fieldglass.mjs",
     "test:usb": "node scripts/browser-usb-check.mjs",
-    "check": "npm test && npm run test:api && npm run test:wasm && npm run build",
+    "check": "npm test && npm run test:api && npm run test:wasm && npm run test:meteor && npm run build",
     "test:browser:ook": "node scripts/browser-ook-check.mjs",
     "test:browser:ook-inspection": "node scripts/browser-ook-inspection-check.mjs",
     "test:browser:recording": "node scripts/browser-recording-check.mjs",
@@ -31,7 +31,12 @@
     "app": "npm run build && vite preview --port 5177",
     "test:browser:pwa": "node scripts/browser-pwa-check.mjs",
     "api": "cd backend && go run .",
-    "test:api": "cd backend && go test ./..."
+    "test:api": "cd backend && go test ./...",
+    "build:meteor": "bash scripts/build-meteor.sh",
+    "test:meteor": "node scripts/fetch-meteor-fixture.mjs && npm run test:meteor:bounds && vitest run src/meteor && TEST_MODULATION=1 node scripts/check-meteor-modern.mjs",
+    "test:browser:meteor": "node scripts/browser-meteor-check.mjs",
+    "test:meteor:bounds": "mkdir -p artifacts && cc -O2 -Iwasm/meteor/vendor/meteor_decode wasm/meteor/test_bounds.c wasm/meteor/vendor/meteor_decode/channel.c -o artifacts/meteor-bounds && artifacts/meteor-bounds",
+    "test:browser:meteor-bias": "node scripts/browser-meteor-bias-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",
@@ -39,7 +44,8 @@
     "@jtarrio/webrtlsdr": "3.0.7",
     "lucide-react": "1.76.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "satellite.js": "6.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",

@@ -28,6 +28,7 @@ const palette = Array.from({ length: 256 }, (_, i) => {
 
 export function Spectrum({
   data,
+  sampleRate = SAMPLE_RATE,
   settings,
   source,
   floor,
@@ -38,6 +39,7 @@ export function Spectrum({
   onReset,
 }: {
   data: RefObject<Float32Array | null>;
+  sampleRate?: number;
   settings: Settings;
   source: string;
   floor: number;
@@ -49,12 +51,19 @@ export function Spectrum({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const hover = useRef<number | null>(null);
-  const current = useRef({ settings, floor, frozen, peakHold, source });
-  current.current = { settings, floor, frozen, peakHold, source };
+  const current = useRef({
+    settings,
+    floor,
+    frozen,
+    peakHold,
+    source,
+    sampleRate,
+  });
+  current.current = { settings, floor, frozen, peakHold, source, sampleRate };
   const reset = useRef(0);
   useEffect(() => {
     reset.current++;
-  }, [settings.center, settings.span, source]);
+  }, [settings.center, settings.span, source, sampleRate]);
   useEffect(() => {
     const c = canvas.current!;
     const ctx = c.getContext("2d")!;
@@ -68,7 +77,14 @@ export function Spectrum({
       animation = 0;
     const draw = () => {
       animation = requestAnimationFrame(draw);
-      const { settings: s, floor, frozen, peakHold, source } = current.current;
+      const {
+        settings: s,
+        floor,
+        frozen,
+        peakHold,
+        source,
+        sampleRate,
+      } = current.current;
       const rect = c.getBoundingClientRect(),
         dpr = Math.min(devicePixelRatio || 1, 2);
       const width = Math.round(rect.width * dpr),
@@ -129,7 +145,13 @@ export function Spectrum({
         );
         const row = hctx.createImageData(history.width, rowHeight);
         for (let x = 0; x < history.width; x++) {
-          const [lo, hi] = binRange(x, history.width, bins.length, s.span);
+          const [lo, hi] = binRange(
+            x,
+            history.width,
+            bins.length,
+            s.span,
+            sampleRate,
+          );
           let value = -140;
           for (let b = lo; b < hi; b++) value = Math.max(value, bins[b]);
           const color =
@@ -220,7 +242,7 @@ export function Spectrum({
             values,
             left,
             w,
-            (px) => binRange(px, w, values.length, s.span),
+            (px) => binRange(px, w, values.length, s.span, sampleRate),
             yFor,
           );
           ctx.strokeStyle = color;
@@ -354,10 +376,10 @@ export function Spectrum({
         tabIndex={0}
         aria-label="Decoder frequency on spectrum"
         aria-valuemin={
-          settings.center - SAMPLE_RATE / 2 + settings.bandwidth / 2
+          settings.center - sampleRate / 2 + settings.bandwidth / 2
         }
         aria-valuemax={
-          settings.center + SAMPLE_RATE / 2 - settings.bandwidth / 2
+          settings.center + sampleRate / 2 - settings.bandwidth / 2
         }
         aria-valuenow={settings.channel}
         aria-valuetext={`${(settings.channel / 1e6).toFixed(4)} MHz`}

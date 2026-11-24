@@ -54,6 +54,14 @@ export function captureMetadata(
       {
         global: {
           "core:datatype": "cu8",
+          ...(s.decoder === "meteor"
+            ? {
+                "core:extensions": [
+                  { name: "spectrum", version: "1.0.0", optional: true },
+                ],
+                "spectrum:meteor": { ...s.meteor, frequency: s.channel },
+              }
+            : {}),
           "core:sample_rate": SAMPLE_RATE,
           "core:version": "1.2.6",
           "core:dataset": info.filename,

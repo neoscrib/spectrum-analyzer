@@ -1,3 +1,4 @@
+import type { DecoderInput } from "../meteor/model";
 import type { Settings } from "../model";
 import type { ArmerPolicy } from "../armer/model";
 import type { NfmMonitorConfig } from "../presets/model";
@@ -25,6 +26,7 @@ export class DecoderHost {
     policy: ArmerPolicy,
     monitor: NfmMonitorConfig | null,
     multiplex = false,
+    input?: DecoderInput,
   ) {
     if (this.kind !== settings.decoder) this.dispose();
     const generation = ++this.generation;
@@ -54,6 +56,7 @@ export class DecoderHost {
       policy,
       monitor,
       multiplex,
+      input,
     });
     if (generation === this.generation) this.ready = true;
   }

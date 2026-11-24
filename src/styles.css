@@ -2754,6 +2754,76 @@ h1 {
   width: 100%;
   height: 110px;
 }
+.ook-inspection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ook-symbol {
+  fill: #91e5c00a;
+  pointer-events: none;
+}
+.ook-symbol-odd {
+  fill: #8abfe318;
+}
+.ook-symbol.is-highlighted {
+  fill: #91e5c042;
+}
+.ook-byte-boundary {
+  stroke: #eac17a70;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  pointer-events: none;
+}
+.ook-measured-interval {
+  fill: #eac17a22;
+  stroke: #eac17a;
+  stroke-width: 1;
+  pointer-events: none;
+}
+.ook-waveform-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: crosshair;
+}
+.ook-timing-readout {
+  min-height: 34px;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  font: 11px/1.6 var(--mono);
+  overflow-wrap: anywhere;
+}
+.ook-timing-readout.is-inspecting {
+  background: #eac17a0a;
+  color: #eac17a;
+  border-color: #eac17a;
+}
+.ook-bit,
+.ook-hex-group {
+  display: inline-block;
+  border-radius: 2px;
+  cursor: crosshair;
+}
+.ook-bit.is-highlighted {
+  background: #91e5c03b;
+  color: #e2ffef;
+}
+.ook-hex-group.is-highlighted {
+  background: #eac17a35;
+  color: #f3d69e;
+}
+.ook-bit:focus-visible,
+.ook-hex-group:focus-visible {
+  outline: 1px solid #eac17a;
+  outline-offset: 1px;
+}
 .ook-waveform text {
   fill: var(--muted);
   font-size: 13px;
@@ -2772,12 +2842,47 @@ h1 {
   color: var(--muted);
   font-size: 12px;
 }
-.ook-bits code {
-  font:
-    14px "IBM Plex Mono",
-    monospace;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+.ook-dumps {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+.ook-dump {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0c1117;
+}
+.ook-dump-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: #95afa3;
+  font-size: 11px;
+}
+.ook-dump-heading .small {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+.ook-dump pre {
+  position: relative;
+  margin: 0;
+  padding: 12px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre;
+  font: 12px/1.8 var(--mono);
+  color: #b6dfcb;
+  user-select: text;
+}
+@media (max-width: 650px) {
+  .ook-dumps {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .ook-panel details {
   margin-top: 18px;

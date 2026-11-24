@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  burstHex,
-  interpretBurst,
   ookText,
   validateOok,
   type OokOptions,
   type OokCapture,
   type OokStatus,
 } from "../ook/model";
+import { OokBurstViewer } from "./OokBurstViewer";
 function download(name: string, text: string, type: string) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement("a");
@@ -15,49 +14,6 @@ function download(name: string, text: string, type: string) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-function PulsePlot({ capture }: { capture: OokCapture }) {
-  const runs = capture.durations.slice(
-    0,
-    Math.min(128, capture.durations.length - 1),
-  );
-  const total = runs.reduce((a, b) => a + b, 0);
-  let at = 0;
-  const points = runs
-    .flatMap((us, i) => {
-      const y = i % 2 === 0 ? 18 : 80,
-        x = 12 + (at / total) * 976;
-      at += us;
-      return [`${x},${y}`, `${12 + (at / total) * 976},${y}`];
-    })
-    .join(" ");
-  return (
-    <div className="ook-waveform">
-      <svg
-        role="img"
-        aria-label="Sliced OOK pulse train"
-        viewBox="0 0 1000 96"
-        preserveAspectRatio="none"
-      >
-        <line x1="12" x2="988" y1="80" y2="80" className="ook-baseline" />
-        <polyline
-          points={points}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-      <div className="ook-axis">
-        <span>0 µs</span>
-        <span>{Math.round(total).toLocaleString()} µs</span>
-      </div>
-      <p className="caption">
-        Sliced levels, not amplitude. Final idle delimiter omitted.
-        {capture.durations.length > 129 ? " Showing the first 64 pulses." : ""}
-      </p>
-    </div>
-  );
 }
 export function OokPanel({
   status,
@@ -86,8 +42,7 @@ export function OokPanel({
     setError("");
   }, [options]);
   const selected = captures.find((c) => c.id === selectedId) ?? captures.at(-1);
-  const bits = selected ? interpretBurst(selected, options) : null,
-    hex = burstHex(bits);
+  const [showBytes, setShowBytes] = useState(true);
   const set = <K extends keyof OokOptions>(key: K, value: OokOptions[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
   return (
@@ -356,8 +311,8 @@ export function OokPanel({
           {captures.toReversed().map((c) => (
             <option value={c.id} key={c.id}>
               #{c.id} · {(c.frequency / 1e6).toFixed(4)} MHz ·{" "}
-              {c.durations.length / 2} pulses · {c.test ? "GENERATED" : "RF"} ·{" "}
-              {c.receivedAt}
+              {Math.ceil(c.durations.length / 2)} pulses ·{" "}
+              {c.test ? "GENERATED" : "RF"} · {c.receivedAt}
             </option>
           ))}
         </select>
@@ -376,31 +331,20 @@ export function OokPanel({
               {selected.bandwidth / 1000} kHz
             </strong>
             <span>
-              {selected.durations.length / 2} pulses ·{" "}
+              {Math.ceil(selected.durations.length / 2)} pulses ·{" "}
               {((selected.endSeconds - selected.startSeconds) * 1000).toFixed(
                 2,
               )}{" "}
               ms · {selected.receivedAt}
             </span>
           </div>
-          <PulsePlot capture={selected} />
-          <div className="ook-bits">
-            <span>
-              Interpreted bits · {options.encoding.toUpperCase()}
-              {bits ? ` · ${bits.length} bits` : ""}
-            </span>
-            <code data-testid="ook-bits">
-              {bits ?? "Select PWM, PPM, or NRZ to interpret timings."}
-            </code>
-            {hex && <code data-testid="ook-hex">HEX {hex}</code>}
-            {bits && (
-              <p className="caption">
-                Current interpretation settings, ±25% timing tolerance; ? marks
-                a mismatch. NRZ excludes the final idle; byte-aligned bits show
-                MSB-first hex. No protocol or checksum validation.
-              </p>
-            )}
-          </div>
+          <OokBurstViewer
+            key={`${selected.id}:${options.encoding}:${options.shortUs}:${options.longUs}:${options.invert}`}
+            capture={selected}
+            options={options}
+            showBytes={showBytes}
+            onShowBytes={setShowBytes}
+          />
           <div className="ook-actions">
             <button
               className="button"
@@ -434,8 +378,11 @@ export function OokPanel({
                         <td>{i + 1}</td>
                         <td>{high.toFixed(1)}</td>
                         <td>
-                          {i * 2 + 2 === selected.durations.length ? "≥ " : ""}
-                          {selected.durations[i * 2 + 1].toFixed(1)}
+                          {i * 2 + 2 === selected.durations.length &&
+                          selected.gapLowerBound
+                            ? "≥ "
+                            : ""}
+                          {selected.durations[i * 2 + 1]?.toFixed(1) ?? "—"}
                         </td>
                       </tr>
                     ))}
@@ -444,9 +391,13 @@ export function OokPanel({
             </div>
           </details>
           <p className="caption">
-            The last gap is an observed lower bound. The newest 100 bursts are
-            kept in memory; export to save. Short glitches and oversized or
-            unterminated bursts are discarded.
+            {selected.durations.length % 2
+              ? "No following low gap was captured for the final high pulse."
+              : selected.gapLowerBound
+                ? "The last gap is an observed lower bound."
+                : "All listed pulse and gap durations were captured."}{" "}
+            The newest 100 bursts are kept in memory; export to save. Short
+            glitches and oversized or unterminated bursts are discarded.
           </p>
         </>
       )}

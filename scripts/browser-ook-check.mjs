@@ -11,6 +11,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1120 } }),
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(process.env.APP_URL || "http://127.0.0.1:5176");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByLabel("CENTER FREQUENCY", { exact: true }).fill("433.7500");
   await page.getByRole("button", { name: "Tune", exact: true }).click();
   await page.getByLabel("Decoder", { exact: true }).selectOption("ook");
@@ -48,7 +49,18 @@ try {
     .getByRole("button", { name: "Apply OOK settings", exact: true })
     .click();
   await expect(page.getByTestId("ook-bits")).toHaveText("10100110");
-  await expect(page.getByTestId("ook-hex")).toHaveText("HEX A6");
+  await expect(page.getByTestId("ook-hex")).toHaveText("A6");
+  await page
+    .getByRole("button", { name: "Copy binary dump", exact: true })
+    .click();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "10100110",
+  );
+  await page
+    .getByRole("button", { name: "Copy hex dump", exact: true })
+    .click();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "A6");
   // Await both an OOK burst and nonzero-low ASK burst after reconfiguration.
   await expect
     .poll(
@@ -72,7 +84,7 @@ try {
     .getByRole("button", { name: "Apply OOK settings", exact: true })
     .click();
   await expect(page.getByTestId("ook-bits")).toHaveText("01011001");
-  await expect(page.getByTestId("ook-hex")).toHaveText("HEX 59");
+  await expect(page.getByTestId("ook-hex")).toHaveText("59");
   // Interpreting history must retain raw timings; export carries test provenance.
   let pending = page.waitForEvent("download");
   await page
@@ -107,7 +119,7 @@ try {
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByTestId("ook-threshold")).toHaveText("-15.0 dBFS");
   await select.selectOption("latest");
-  await expect(page.getByTestId("ook-hex")).toHaveText("HEX 59");
+  await expect(page.getByTestId("ook-hex")).toHaveText("59");
   // Both tuning offset signs still recover the data; spectrum zoom is independent.
   await page.getByLabel("CENTER FREQUENCY", { exact: true }).fill("434.1000");
   await page.getByRole("button", { name: "Tune", exact: true }).click();
@@ -118,7 +130,7 @@ try {
   await expect
     .poll(async () => select.locator("option").count(), { timeout: 6000 })
     .toBeGreaterThan(previous);
-  await expect(page.getByTestId("ook-hex")).toHaveText("HEX 59");
+  await expect(page.getByTestId("ook-hex")).toHaveText("59");
   pending = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Export captures JSON", exact: true })
@@ -132,6 +144,70 @@ try {
   assert(json.captures.every((c) => c.test && c.durations.length === 16));
   assert.equal(json.captures.at(-1).frequency, 433920000);
   assert.equal(json.captures.at(-1).bandwidth, 25000);
+  // The same stored pulses remain inspectable when the stream isn't byte-aligned.
+  await select.selectOption(
+    await select.locator("option").nth(1).getAttribute("value"),
+  );
+  await page
+    .getByLabel("OOK bit interpretation", { exact: true })
+    .selectOption("nrz");
+  await page.getByLabel("OOK short duration µs", { exact: true }).fill("500");
+  await page.getByLabel("Invert OOK bits", { exact: true }).uncheck();
+  await page
+    .getByRole("button", { name: "Apply OOK settings", exact: true })
+    .click();
+  await expect(page.getByTestId("ook-bits")).toHaveText(
+    "11010110 10101101 101",
+  );
+  await expect(page.getByTestId("ook-hex")).toHaveText("D6 AD [101]");
+  await expect(page.getByTestId("ook-dump-note")).toContainText(
+    "19 interpreted bits · final byte has 3 of 8 bits",
+  );
+  await expect(page.getByTestId("ook-dump-note")).toContainText(
+    "no zero padding",
+  );
+  await page
+    .getByRole("button", { name: "Copy hex dump", exact: true })
+    .click();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "D6 AD [101]",
+  );
+  await page
+    .locator(".ook-bits")
+    .screenshot({ path: "artifacts/ook-dump-partial.png" });
+  await page.setViewportSize({ width: 390, height: 1120 });
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page
+    .locator(".ook-bits")
+    .screenshot({ path: "artifacts/ook-dump-mobile.png" });
+  await page.setViewportSize({ width: 1440, height: 1120 });
+  // Keep uncertain nibble positions instead of hiding all hex for a bad timing.
+  await page
+    .getByLabel("OOK bit interpretation", { exact: true })
+    .selectOption("pwm");
+  await page.getByLabel("OOK short duration µs", { exact: true }).fill("300");
+  await page
+    .getByRole("button", { name: "Apply OOK settings", exact: true })
+    .click();
+  await expect(page.getByTestId("ook-bits")).toHaveText("1?1??11?");
+  await expect(page.getByTestId("ook-hex")).toHaveText("??");
+  await expect(page.getByTestId("ook-dump-note")).toContainText(
+    "4 uncertain bits",
+  );
+  await page
+    .locator(".ook-bits")
+    .screenshot({ path: "artifacts/ook-dump-unknown.png" });
+  await page.getByLabel("OOK short duration µs", { exact: true }).fill("500");
+  await page.getByLabel("Invert OOK bits", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Apply OOK settings", exact: true })
+    .click();
+  await expect(page.getByTestId("ook-hex")).toHaveText("59");
   await page
     .getByText("Raw pulse / gap durations (µs)", { exact: true })
     .click();
@@ -169,6 +245,9 @@ try {
     bursts: json.captures.length,
     pwm: "A6",
     inverted: "59",
+    partial: "D6 AD [101] · 19 bits, no padding",
+    uncertain: "1?1??11? · hex ??",
+    copy: "binary and hex verified",
     pairs,
     errors,
   };

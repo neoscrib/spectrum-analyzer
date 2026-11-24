@@ -81,40 +81,137 @@ export interface OokCapture extends OokBurst {
   receivedAt: string;
   options: OokOptions;
 }
-/** Explicitly configured interpretation, not device recognition. '?' retains
- * timing failures rather than manufacturing plausible-looking data. */
-export function interpretBurst(
+export interface OokInterval {
+  index: number;
+  high: boolean;
+  startUs: number;
+  endUs: number;
+  durationUs: number;
+  delimiter: boolean;
+}
+export interface OokBitSpan {
+  /** Zero-based index; UI labels are one-based. */
+  index: number;
+  value: "0" | "1" | "?";
+  startUs: number;
+  endUs: number;
+}
+export interface OokInterpretation {
+  bits: string | null;
+  spans: OokBitSpan[];
+  intervals: OokInterval[];
+  durationUs: number;
+  /** End of the signal, excluding an observed trailing idle delimiter. */
+  signalEndUs: number;
+  truncated: boolean;
+}
+
+/** Bit decisions and their source spans share one interpretation path. All
+ * times are relative to the burst start and derive from stored capture edges. */
+export function interpretBurstWithTiming(
   burst: OokBurst,
   options: OokOptions,
-): string | null {
-  if (options.encoding === "raw") return null;
-  const classify = (us: number) => {
+): OokInterpretation {
+  let at = 0;
+  const intervals = burst.durations.map((durationUs, index): OokInterval => {
+    const startUs = at;
+    at += durationUs;
+    return {
+      index,
+      high: index % 2 === 0,
+      startUs,
+      endUs: at,
+      durationUs,
+      delimiter:
+        index === burst.durations.length - 1 &&
+        index % 2 === 1 &&
+        burst.gapLowerBound,
+    };
+  });
+  const last = intervals.at(-1);
+  const spans: OokBitSpan[] = [];
+  let truncated = false;
+  const result = (): OokInterpretation => ({
+    bits:
+      options.encoding === "raw"
+        ? null
+        : spans.map((span) => span.value).join("") + (truncated ? "…" : ""),
+    spans,
+    intervals,
+    durationUs: at,
+    signalEndUs: last?.delimiter ? last.startUs : at,
+    truncated,
+  });
+  if (options.encoding === "raw") return result();
+  const classify = (us: number): OokBitSpan["value"] => {
     const ds = Math.abs(us - options.shortUs) / options.shortUs,
       dl = Math.abs(us - options.longUs) / options.longUs;
     return Math.min(ds, dl) > 0.25 ? "?" : ds <= dl ? "0" : "1";
   };
-  let bits = "";
+  const add = (value: OokBitSpan["value"], startUs: number, endUs: number) => {
+    if (spans.length >= 8192) {
+      truncated = true;
+      return;
+    }
+    spans.push({
+      index: spans.length,
+      startUs,
+      endUs,
+      value:
+        options.invert && value !== "?" ? (value === "0" ? "1" : "0") : value,
+    });
+  };
   if (options.encoding === "pwm" || options.encoding === "ppm") {
-    const start = options.encoding === "pwm" ? 0 : 1;
-    // Trailing idle is a burst delimiter, never a PPM data bit.
-    const end = burst.durations.length - (start === 1 ? 1 : 0);
-    for (let i = start; i < end; i += 2) bits += classify(burst.durations[i]);
+    for (let i = 0; i < intervals.length; i += 2) {
+      const high = intervals[i],
+        low = intervals[i + 1];
+      if (options.encoding === "pwm") {
+        // A PWM high is a complete decision even if its following gap was
+        // omitted. Include its data gap, but never the burst idle delimiter.
+        add(
+          classify(high.durationUs),
+          high.startUs,
+          low && !low.delimiter ? low.endUs : high.endUs,
+        );
+      } else if (low && !low.delimiter) {
+        add(classify(low.durationUs), high.startUs, low.endUs);
+      }
+      if (truncated) break;
+    }
   } else {
-    for (let i = 0; i < burst.durations.length - 1; i++) {
-      const cells = Math.round(burst.durations[i] / options.shortUs);
+    for (const interval of intervals) {
+      if (interval.delimiter) continue;
+      const cells = Math.round(interval.durationUs / options.shortUs);
       if (
         cells < 1 ||
         cells > 256 ||
-        Math.abs(burst.durations[i] / options.shortUs - cells) > 0.25
+        Math.abs(interval.durationUs / options.shortUs - cells) > 0.25
       )
-        bits += "?";
-      else bits += (i % 2 === 0 ? "1" : "0").repeat(cells);
-      if (bits.length > 8192) return bits.slice(0, 8192) + "…";
+        add("?", interval.startUs, interval.endUs);
+      else
+        for (let cell = 0; cell < cells; cell++) {
+          // Distribute cells over the actual measured run, not ideal clock
+          // widths, so successive spans always meet at captured edges.
+          add(
+            interval.high ? "1" : "0",
+            interval.startUs + (interval.durationUs * cell) / cells,
+            cell === cells - 1
+              ? interval.endUs
+              : interval.startUs + (interval.durationUs * (cell + 1)) / cells,
+          );
+          if (truncated) break;
+        }
+      if (truncated) break;
     }
   }
-  return options.invert
-    ? bits.replace(/[01]/g, (b) => (b === "0" ? "1" : "0"))
-    : bits;
+  return result();
+}
+/** String-only compatibility interface for exports and existing consumers. */
+export function interpretBurst(
+  burst: OokBurst,
+  options: OokOptions,
+): string | null {
+  return interpretBurstWithTiming(burst, options).bits;
 }
 export function burstHex(bits: string | null): string | null {
   if (!bits || /[^01]/.test(bits) || bits.length % 8) return null;
@@ -123,17 +220,71 @@ export function burstHex(bits: string | null): string | null {
     .map((b) => parseInt(b, 2).toString(16).padStart(2, "0").toUpperCase())
     .join(" ");
 }
+
+/** Human-readable, MSB-first dumps of the interpreted stream. Keep byte
+ * positions even when timings are unknown; never invent padding bits. */
+export function formatOokDump(bits: string | null): {
+  binary: string;
+  hex: string;
+  bitCount: number;
+  unknownBits: number;
+  partialByteBits: number;
+  trailingBits: string;
+  truncated: boolean;
+  groups: { startBit: number; endBit: number; binary: string; hex: string }[];
+} | null {
+  if (bits === null) return null;
+  const truncated = bits.endsWith("…");
+  const data = truncated ? bits.slice(0, -1) : bits;
+  const bytes = data.match(/.{1,8}/g) ?? [];
+  const hex = bytes.map((byte) =>
+    (byte.match(/.{1,4}/g) ?? [])
+      .map((nibble) => {
+        if (nibble.length < 4) return `[${nibble}]`;
+        return /^[01]{4}$/.test(nibble)
+          ? parseInt(nibble, 2).toString(16).toUpperCase()
+          : "?";
+      })
+      .join(""),
+  );
+  const rows = (values: string[]) => {
+    const lines: string[] = [];
+    for (let i = 0; i < values.length; i += 4)
+      lines.push(values.slice(i, i + 4).join(" "));
+    if (truncated) lines.push("…");
+    return lines.join("\n");
+  };
+  return {
+    binary: rows(bytes),
+    hex: rows(hex),
+    bitCount: data.length,
+    unknownBits: (data.match(/\?/g) ?? []).length,
+    partialByteBits: data.length % 8,
+    trailingBits: data.length % 4 ? data.slice(-(data.length % 4)) : "",
+    truncated,
+    groups: bytes.map((binary, i) => ({
+      startBit: i * 8,
+      endBit: i * 8 + binary.length,
+      binary,
+      hex: hex[i],
+    })),
+  };
+}
 /** rtl_433's documented pulse/gap text format. Last idle is a lower bound. */
 export function ookText(c: OokCapture): string {
   const rows = [
     ";pulse data",
     ";version 1",
     ";timescale 1us",
-    `;ook ${c.durations.length / 2} pulses`,
+    `;ook ${Math.ceil(c.durations.length / 2)} pulses`,
     `;freq1 ${c.frequency}`,
     `; Generated test: ${c.test ? "yes" : "no"}`,
     `; Received ${c.receivedAt}`,
-    "; Final gap is an observed lower bound; no device protocol/checksum verified.",
+    c.durations.length % 2
+      ? "; Final low gap was not captured; exported 0 is a missing-gap placeholder."
+      : c.gapLowerBound
+        ? "; Final gap is an observed lower bound; no device protocol/checksum verified."
+        : "; Measured pulse/gap timings; no device protocol/checksum verified.",
   ];
   for (let i = 0; i < c.durations.length; i += 2)
     rows.push(

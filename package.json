@@ -21,6 +21,7 @@
     "test:usb": "node scripts/browser-usb-check.mjs",
     "check": "npm test && npm run test:api && npm run test:wasm && npm run build",
     "test:browser:ook": "node scripts/browser-ook-check.mjs",
+    "test:browser:ook-inspection": "node scripts/browser-ook-inspection-check.mjs",
     "test:browser:recording": "node scripts/browser-recording-check.mjs",
     "build:rtl433": "bash scripts/build-rtl433.sh",
     "test:rtl433": "node scripts/check-rtl433.mjs",

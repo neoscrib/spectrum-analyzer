@@ -202,7 +202,29 @@ Choose **Decode as… → OOK / ASK · pulse data**, keep or enter the target fr
 
 **Automatic threshold** tracks low and peak amplitudes with hysteresis and a −55 dBFS minimum slicing threshold; it needs sufficient amplitude contrast. For weak signals or close ASK levels, choose **Manual** and put the dBFS threshold between low and high. Adjust RF gain without clipping. **Minimum pulse** qualifies both transitions to reject glitches (default 50 µs); **Burst idle gap** closes a capture after continuous low (default 5000 µs). Set the gap longer than any data low interval. A 20 ms startup is ignored. Oversized bursts (2048 runs or two seconds without a delimiter) are discarded until idle; no partial packet is presented as complete.
 
-Raw timings are always retained. Optional **PWM** classifies high durations, **PPM** classifies low durations, and **NRZ** expands runs using an explicit bit period. Enter the short/long durations and optionally invert bits. Timing matches allow ±25%; `?` marks a mismatch. The final idle delimiter is excluded from PPM/NRZ data; trailing NRZ zeros cannot be inferred from an idle delimiter. Byte-aligned results show MSB-first hex. Changing interpretation applies to stored bursts as well. This is configurable bit interpretation, not automatic device recognition or checksum validation; temperature, IDs, button codes, Manchester framing, and other device-specific fields need protocol decoders.
+Raw timings are always retained. Optional **PWM** classifies high durations, **PPM** classifies low durations, and **NRZ** expands runs using an explicit bit period. Enter the short/long durations and optionally invert bits. Timing matches allow ±25%; `?` marks a mismatch. The final idle delimiter is excluded from PPM/NRZ data; trailing NRZ zeros cannot be inferred from an idle delimiter. The **Interpreted bits** area shows paired **Binary** and **Hex** dumps, grouped into bytes with four bytes per line and copy buttons. Hex is MSB-first and preserves complete nibbles for non-byte-aligned packets; a partial final nibble stays in binary brackets, for example `D6 AD [101]` is exactly 19 bits, with no zero padding. Unknown nibbles are `?`, while the binary dump keeps each uncertain bit in place. NRZ byte alignment after an uncertain-length run is tentative. Counts identify partial bytes, uncertain bits, and any interpretation truncation. Dumps and the waveform cover the entire captured signal, including a final high pulse with no recorded low gap. Changing interpretation applies to stored bursts as well. This is configurable bit interpretation, not automatic device recognition or checksum validation; temperature, IDs, button codes, Manchester framing, and other device-specific fields need protocol decoders.
+
+Hover anywhere over the **pulse waveform** to inspect the actual stored high
+pulse or low gap duration. The measured interval is outlined and labeled, for
+example **High pulse · 280 µs · Bit 2 = 0** and **Low gap · 740 µs · Bit 2 = 0**.
+Bits are numbered from 1. Alternating shading marks interpreted symbols:
+PWM covers a high pulse plus its following data gap, with the high width making
+the bit decision. A final high with no following gap ends at its captured falling
+edge. PPM covers the corresponding high/low pair and decides from the low width;
+NRZ cells are distributed over their measured run rather than reconstructed from
+ideal widths. Unknown decisions keep their raw timing spans.
+
+**Show byte boundaries** adds a divider after every eight interpreted bits,
+aligned to the current hex grouping. Hovering a waveform symbol highlights its
+binary digit and hex group; hovering a binary digit highlights its symbol, while
+a hex group highlights up to eight bits and their waveform spans. A 33-bit packet
+keeps its final **[0]** as a one-bit group. Bit and hex inspection also support
+keyboard focus and arrow keys. Long dumps scroll internally to the linked bits;
+the page does not jump away from the hovered waveform. The final observed idle
+delimiter stays in the raw timing table and is omitted from the signal plot.
+The interpretation API `interpretBurstWithTiming()` exposes bit values and their
+`startUs`/`endUs` source spans, alongside every raw high/low interval.
+
 
 Keep the newest **100 bursts** in memory, inspect older bursts while acquisition continues, **Export captures JSON** with frequency/filter/options and generated/RF provenance, or **Export pulse data (.ook)** for a selected burst. Pulse files use microsecond high/low pairs following the documented [rtl_433 pulse-data format](https://github.com/merbanan/rtl_433/blob/master/docs/IQ_FORMATS.md). The final low is an observed lower bound, not a measurement of the full silence. Capture history is not persisted across reloads; export it before closing. OOK settings persist locally.
 
@@ -325,6 +347,7 @@ npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and A
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
 npm run test:browser:recording # IQ save/metadata and saved-file offline decode
 npm run test:browser:ook # OOK/ASK pulses, bits, thresholds, history and exports
+npm run test:browser:ook-inspection # Edge timing, linked bits/bytes, partial captures
 npm run test:browser:nfm # NFM audio/codes, parallel monitoring, scanning, history, banks
 npm run test:browser:armer # P25 IQ/audio, talkgroup policies, aliases and XML interchange
 npm run test:fieldglass    # Exact parity with the actual ../armer/web WASM module

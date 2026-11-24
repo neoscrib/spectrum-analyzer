@@ -15,7 +15,7 @@ the separate homelab migration repository is not their reconciliation source.
 
 Push application changes to `master` and wait for **Publish image** to succeed.
 Update both image tags and digests in `kustomization.yaml` to that build before
-deploying. The checked-in versions pin the first successful production build;
+deploying. The checked-in versions pin the desired production release;
 new `latest` tags do not change running pods.
 
 ```sh
@@ -69,7 +69,7 @@ store and requires a new USB permission grant.
 
 For an application update, restore the previous image pins and reapply, or use
 `kubectl rollout undo deployment/<name> -n myapps` for an immediate rollback
-and then restore the pins. The initial deployment has no earlier revision.
+and then restore the pins.
 To uninstall, remove only the `spectrumsdr-https` listener from `myapps-gateway`,
 then run `kubectl delete -k deploy/kubernetes`. This leaves the shared Gateway,
 namespace, issuer, registry credentials, and other applications in place.

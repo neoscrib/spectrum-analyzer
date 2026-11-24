@@ -7,8 +7,8 @@ resources:
   - route.yaml
 images:
   - name: ghcr.io/neoscrib/spectrum-analyzer
-    newTag: b84c4c7f34d6ab8628cb20fd92e98e1793a7d33e
-    digest: sha256:c513cff6e8b39eea64ed8e0e7be1fd888bdce541a885341c04d8fb5be4e051e4
+    newTag: 8e98d79a55625101b6ad9b4aa8733ddf22bf4231
+    digest: sha256:54f39f28b8952c127fcd215f4fe26393efc8cd3cb82b1142dcdffee74c081f01
   - name: ghcr.io/neoscrib/spectrum-analyzer-api
-    newTag: b84c4c7f34d6ab8628cb20fd92e98e1793a7d33e
-    digest: sha256:a268619595ea23800b95d43bfd213f460f91d20f83bbb25729de99e98dc35c9b
+    newTag: 8e98d79a55625101b6ad9b4aa8733ddf22bf4231
+    digest: sha256:ed340ea7bd6d6f9dfa04b06aa9a0e92b29ba122839aabf4c5cabd94025ea401b

@@ -3174,8 +3174,41 @@ h1 {
 .meteor-image-scroll { max-height:650px; overflow:auto; cursor:grab; background:#080e13; margin-bottom:12px; overscroll-behavior:contain; }
 .meteor-image-scroll:active { cursor:grabbing; }
 .meteor-image-scroll canvas { display:block; height:auto; image-rendering:auto; }
-.meteor-passes { display:flex; align-items:center; gap:18px; }
-.meteor-passes .skyplot { width:160px; flex:0 0 160px; }
+.meteor-passes { display:grid; gap:12px; margin-top:20px; container-type:inline-size; }
+.meteor-pass-card { display:grid; grid-template-columns:150px minmax(0,1fr); align-items:center; gap:20px; padding:18px; background:#141a20; border:1px solid #303942; border-radius:16px; }
+.meteor-pass-card.is-active { border-color:#659c89; background:#151f22; }
+.meteor-pass-card.is-ended { opacity:.6; }
+.meteor-pass-card .skyplot { display:block; width:100%; height:auto; }
+.meteor-pass-data { min-width:0; }
+.meteor-pass-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.meteor-pass-title { margin:0 0 7px; font-size:11px; text-transform:uppercase; letter-spacing:.035em; color:#b6c5d0; }
+.meteor-pass-heading h3 { margin:0; font-size:25px; line-height:1.2; font-weight:600; letter-spacing:-.025em; }
+.meteor-pass-status { display:flex; flex-direction:column; align-items:flex-end; gap:10px; flex-shrink:0; }
+.meteor-pass-quality { padding:4px 9px; border-radius:20px; font-size:11px; line-height:1.3; white-space:nowrap; }
+.meteor-pass-quality.excellent { color:#91e5c0; background:#1a352c; }
+.meteor-pass-quality.good { color:#a6cef3; background:#20303f; }
+.meteor-pass-quality.low { color:#e4bf8c; background:#382f23; }
+.meteor-pass-countdown { display:flex; flex-wrap:wrap; align-items:baseline; gap:5px 7px; font-size:11px; color:#9baab6; }
+.meteor-pass-countdown strong { color:#dce4eb; font:500 12px var(--mono); font-variant-numeric:tabular-nums; }
+.is-active .meteor-pass-countdown, .is-active .meteor-pass-countdown strong { color:var(--green); }
+.meteor-pass-time { margin:9px 0 16px; font-size:13px; line-height:1.6; color:#b6c5d0; font-variant-numeric:tabular-nums; }
+.meteor-pass-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0; }
+.meteor-pass-stats dt { color:#9baab6; font-size:11px; margin-bottom:6px; }
+.meteor-pass-stats dd { margin:0; font-size:18px; line-height:1.4; font-weight:600; }
+@container (max-width:700px) {
+ .meteor-pass-card { grid-template-columns:120px minmax(0,1fr); gap:16px; padding:16px; }
+ .meteor-pass-heading { flex-direction:column; gap:10px; }
+ .meteor-pass-heading h3 { font-size:23px; }
+ .meteor-pass-status { flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+}
+@container (max-width:430px) {
+ .meteor-pass-card { grid-template-columns:78px minmax(0,1fr); gap:10px; padding:12px; border-radius:12px; }
+ .meteor-pass-heading h3 { font-size:20px; }
+ .meteor-pass-title { font-size:10px; line-height:1.5; }
+ .meteor-pass-time { font-size:12px; margin-bottom:12px; }
+ .meteor-pass-stats { gap:8px; }
+ .meteor-pass-stats dd { font-size:14px; }
+}
 .meteor-panel .empty-state { padding:28px 0; color:#81909f; font-size:13px; }
 @media(max-width:650px) {
  .meteor-panel { padding:16px; }
@@ -3183,7 +3216,6 @@ h1 {
  .meteor-diagnostics .constellation { align-self:center; }
  .meteor-stat-grid { gap:14px; }
  .meteor-form { grid-template-columns:minmax(0,1fr); }
- .meteor-passes { flex-direction:column; }
  .meteor-image-heading { align-items:flex-start; }
 }
 .meteor-bias { border-top:1px solid #2a333c; padding:4px 0 18px; }

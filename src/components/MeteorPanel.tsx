@@ -14,18 +14,11 @@ import { DEFAULT_REPLAY, validateReplay } from "../meteor/replay";
 import { inspectIq, type IqSource } from "../meteor/iq";
 import { importMeteorProfile } from "../meteor/profile";
 import { SATELLITES, validateSettings } from "../meteor/settings";
-import {
-  parseTle,
-  predictPasses,
-  lookAt,
-  tleAgeDays,
-  type Pass,
-  type Look,
-} from "../meteor/tracking";
+import { parseTle, predictPasses, tleAgeDays } from "../meteor/tracking";
 import type { ReplayState } from "../radio";
 import { MeteorConstellation } from "./MeteorConstellation";
 import { MeteorImageChannel } from "./MeteorImageChannel";
-import { MeteorSkyPlot } from "./MeteorSkyPlot";
+import { MeteorPassList, type MeteorPassPrediction } from "./MeteorPassList";
 export interface MeteorReplayRequest {
   file: File;
   source: IqSource;
@@ -66,8 +59,9 @@ export function MeteorPanel({
     [frequency, setFrequency] = useState(String(settings.channel / 1e6));
   const [options, setOptions] = useState<ReplayOptions>({ ...DEFAULT_REPLAY }),
     [expectedBytes, setExpectedBytes] = useState<number>();
-  const [passes, setPasses] = useState<Pass[]>([]),
-    [look, setLook] = useState<Look>();
+  const [prediction, setPrediction] = useState<MeteorPassPrediction | null>(
+    null,
+  );
   const replayIntent = useRef(false);
   const metadataInput = useRef<HTMLInputElement>(null);
   const [preparing, setPreparing] = useState(false);
@@ -118,8 +112,16 @@ export function MeteorPanel({
   function predict() {
     try {
       const sat = parseTle(draft.tle, draft.satellite);
-      setPasses(predictPasses(sat, draft, Date.now(), draft.minElevation));
-      setLook(lookAt(sat, draft, Date.now()));
+      setPrediction({
+        passes: predictPasses(sat, draft, Date.now(), draft.minElevation),
+        satellite: SATELLITES.find((s) => s.id === draft.satellite)!.name,
+        orbit: sat,
+        observer: {
+          latitude: draft.latitude,
+          longitude: draft.longitude,
+          altitude: draft.altitude,
+        },
+      });
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -489,30 +491,8 @@ export function MeteorPanel({
           valid Reed–Solomon result. Doppler is off until configured with your
           observer location and fresh TLE.
         </p>
-        {passes.length > 0 && (
-          <div className="meteor-passes">
-            <MeteorSkyPlot pass={passes[0]} current={look} />
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Rise</th>
-                    <th>Set</th>
-                    <th>Peak elevation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {passes.slice(0, 8).map((p) => (
-                    <tr key={p.start}>
-                      <td>{new Date(p.start).toLocaleString()}</td>
-                      <td>{new Date(p.end).toLocaleTimeString()}</td>
-                      <td>{p.maximum.toFixed(0)}°</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        {prediction && prediction.passes.length > 0 && (
+          <MeteorPassList prediction={prediction} />
         )}
       </details>
       <details className="meteor-replay">

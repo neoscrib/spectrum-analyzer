@@ -111,6 +111,8 @@ pub struct WfmDecoder {
     dc_input: [f32; 2],
     dc_output: [f32; 2],
     warmup: usize,
+    // Optional observation only: never feeds back into the audio path.
+    multiplex: Option<Vec<f32>>,
 }
 
 #[wasm_bindgen]
@@ -142,6 +144,7 @@ impl WfmDecoder {
             dc_input: [0.0; 2],
             dc_output: [0.0; 2],
             warmup: 480,
+            multiplex: None,
         }
     }
 
@@ -155,6 +158,25 @@ impl WfmDecoder {
         self.pilot.level as f32
     }
 
+    pub fn multiplex_sample_rate(&self) -> f64 {
+        IF_RATE
+    }
+    pub fn set_multiplex_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.multiplex.get_or_insert_with(Vec::new);
+        } else {
+            self.multiplex = None;
+        }
+    }
+    /// Owned, full-rate discriminator samples from the most recent block.
+    /// Disabled by default; no tap allocation/copying occurs while disabled.
+    pub fn take_multiplex(&mut self) -> Vec<f32> {
+        self.multiplex
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         let baseband = self.front.process(iq);
@@ -164,6 +186,10 @@ impl WfmDecoder {
     /// Interleaved normalized F32 I/Q at 240 kSPS, with owned output PCM.
     pub fn process_baseband(&mut self, iq: &[f32]) -> Vec<f32> {
         let mut out = Vec::with_capacity(iq.len() / 5 + 2);
+        if let Some(tap) = &mut self.multiplex {
+            tap.clear();
+            tap.reserve(iq.len() / 2);
+        }
         for pair in iq.chunks_exact(2) {
             let (i, q) = (pair[0], pair[1]);
             let real = i * self.previous_i + q * self.previous_q;
@@ -171,6 +197,11 @@ impl WfmDecoder {
             self.previous_i = i;
             self.previous_q = q;
             let fm = imag.atan2(real) * (IF_RATE / (2.0 * PI * 75_000.0)) as f32;
+            // The real FM multiplex, before pilot/stereo recovery, 15 kHz
+            // audio filtering, 5:1 PCM decimation and de-emphasis.
+            if let Some(tap) = &mut self.multiplex {
+                tap.push(fm);
+            }
             let carrier = self.pilot.process(fm);
             self.audio.push(fm);
             self.difference.push(fm * 2.0 * carrier);
@@ -361,5 +392,69 @@ mod tests {
                 "broadband noise was mistaken for stereo pilot"
             );
         }
+    }
+
+    #[test]
+    fn multiplex_tap_precedes_audio_filters_and_is_independent_of_mono_mode() {
+        let mut phase = 0.0;
+        let iq: Vec<f32> = (0..48_000)
+            .flat_map(|n| {
+                let t = n as f64 / IF_RATE;
+                let mpx = 0.3 * (2.0 * PI * 1000.0 * t).sin()
+                    + 0.09 * (2.0 * PI * 19000.0 * t).sin()
+                    + 0.03 * (2.0 * PI * 57000.0 * t).sin();
+                phase += 2.0 * PI * 75_000.0 * mpx / IF_RATE;
+                [phase.cos() as f32, phase.sin() as f32]
+            })
+            .collect();
+        let mut baseline = WfmDecoder::new(0.0, 200_000.0, 75.0);
+        let mut tapped = WfmDecoder::new(0.0, 200_000.0, 75.0);
+        let mut mono = WfmDecoder::new(0.0, 200_000.0, 75.0);
+        assert!(tapped.take_multiplex().is_empty());
+        assert_eq!(tapped.multiplex_sample_rate(), IF_RATE);
+        assert!(tapped.multiplex_sample_rate() / 2.0 > 65_000.0);
+        tapped.set_multiplex_enabled(true);
+        mono.set_multiplex_enabled(true);
+        mono.set_stereo_enabled(false);
+        let mut multiplex = Vec::new();
+        for chunk in iq.chunks(2468) {
+            assert_eq!(
+                baseline.process_baseband(chunk),
+                tapped.process_baseband(chunk)
+            );
+            let audio = mono.process_baseband(chunk);
+            assert!(audio.chunks_exact(2).all(|pair| pair[0] == pair[1]));
+            let tap = tapped.take_multiplex();
+            assert_eq!(tap.len(), chunk.len() / 2);
+            assert_eq!(tap, mono.take_multiplex());
+            assert!(tapped.take_multiplex().is_empty());
+            multiplex.extend(tap);
+        }
+        assert_eq!(multiplex.len(), 48_000);
+        for (hz, expected) in [(19000.0, 0.09), (57000.0, 0.03)] {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (n, sample) in multiplex.iter().enumerate() {
+                let phase = 2.0 * PI * hz * n as f64 / IF_RATE;
+                re += *sample as f64 * phase.cos();
+                im += *sample as f64 * phase.sin();
+            }
+            let amplitude = 2.0 * re.hypot(im) / multiplex.len() as f64;
+            assert!(
+                (amplitude - expected).abs() < 1e-5,
+                "tap lost {hz} Hz: {amplitude}"
+            );
+        }
+        tapped.set_multiplex_enabled(false);
+        assert!(tapped.multiplex.is_none());
+        assert_eq!(baseline.process_baseband(&iq), tapped.process_baseband(&iq));
+        assert!(tapped.take_multiplex().is_empty());
+        tapped.set_multiplex_enabled(true);
+        tapped.process_baseband(&iq[..4000]);
+        tapped.process_baseband(&iq[..2000]);
+        assert_eq!(
+            tapped.take_multiplex().len(),
+            1000,
+            "tap must not accumulate unread blocks"
+        );
     }
 }

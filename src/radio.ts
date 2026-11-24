@@ -105,7 +105,19 @@ export class RadioSession {
   private commands: Command[] = [];
   private loop?: Promise<void>;
   private timer?: ReturnType<typeof setTimeout>;
+  private resumeTest?: () => void;
   private testSpeed = 1;
+  private multiplexEnabled = false;
+  setWfmMultiplex(enabled: boolean) {
+    this.multiplexEnabled = enabled;
+    if (this.worker) this.post({ type: "wfm-multiplex", enabled });
+  }
+  setWfmStereo(enabled: boolean) {
+    if (this.settings?.decoder === "wfm") {
+      this.settings = { ...this.settings, stereo: enabled };
+      if (this.worker) this.post({ type: "wfm-stereo", enabled });
+    }
+  }
   setTestSpeed(speed: number) {
     this.testSpeed = speed === 16 ? 16 : 1;
   }
@@ -158,6 +170,9 @@ export class RadioSession {
         if (data.revision === this.revision)
           this.onFrame(data, this.queue.length);
         this.pump();
+        const resume = this.resumeTest;
+        this.resumeTest = undefined;
+        resume?.();
       };
     });
     const timeout = setTimeout(
@@ -174,6 +189,7 @@ export class RadioSession {
       settings,
       revision: ++this.revision,
       armerPolicy: this.armerPolicy,
+      multiplex: this.multiplexEnabled,
       monitor,
     });
     try {
@@ -241,10 +257,14 @@ export class RadioSession {
       let target = performance.now();
       const tick = () => {
         if (!this.running) return;
-        if (!this.busy) {
-          this.busy = true;
-          this.post({ type: "test", revision: this.revision });
+        if (this.busy) {
+          // Resume as soon as the in-flight block returns. Skipping this tick
+          // would lose an entire block's wall-clock time and starve playback.
+          this.resumeTest = tick;
+          return;
         }
+        this.busy = true;
+        this.post({ type: "test", revision: this.revision });
         target += ((65536 / SAMPLE_RATE) * 1000) / this.testSpeed;
         // Slow down rather than accumulate an unbounded synthetic sample queue.
         if (target < performance.now() - 100) target = performance.now();
@@ -407,6 +427,7 @@ export class RadioSession {
     const recording = this.stopRecording(reason);
     this.running = false;
     clearTimeout(this.timer);
+    this.resumeTest = undefined;
     this.queue = [];
     this.busy = false;
     for (const command of this.commands.splice(0))

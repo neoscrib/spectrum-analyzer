@@ -24,6 +24,7 @@ export class DecoderHost {
     settings: Settings,
     policy: ArmerPolicy,
     monitor: NfmMonitorConfig | null,
+    multiplex = false,
   ) {
     if (this.kind !== settings.decoder) this.dispose();
     const generation = ++this.generation;
@@ -47,7 +48,13 @@ export class DecoderHost {
       worker.onmessageerror = () =>
         this.dispose(Error("The decoder returned an unreadable message."));
     }
-    await this.request({ type: "configure", settings, policy, monitor });
+    await this.request({
+      type: "configure",
+      settings,
+      policy,
+      monitor,
+      multiplex,
+    });
     if (generation === this.generation) this.ready = true;
   }
 

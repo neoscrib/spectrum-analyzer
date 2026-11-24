@@ -11,6 +11,7 @@ let samplesProcessed = 0;
 let revision = 0;
 let lastSpectrum = -Infinity;
 let recordingId = 0;
+let multiplexEnabled = false;
 let policy: ArmerPolicy = { defaultListen: true, rules: [] };
 let loading = Promise.resolve();
 let configuring = Promise.resolve();
@@ -31,7 +32,7 @@ function configure(
   samplesProcessed = 0;
   lastSpectrum = -Infinity;
   const current = ++configuration;
-  configuring = host.configure(s, policy, monitor);
+  configuring = host.configure(s, policy, monitor, multiplexEnabled);
   // A slow first download must not back up USB/FFT/recording. During loading,
   // live buffers still flow through capture, with decoding starting when ready.
   if (reportErrors)
@@ -89,7 +90,11 @@ async function process(data?: ArrayBuffer) {
       ...(recording ? [recording.data] : []),
       ...(fft ? [fft.buffer] : []),
       ...result.events.flatMap((e) =>
-        e.type === "audio" ? [e.samples.buffer] : [],
+        e.type === "audio"
+          ? [e.samples.buffer]
+          : e.type === "spectrum"
+            ? [e.multiplex.bins.buffer]
+            : [],
       ),
     ],
   );
@@ -108,8 +113,17 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
       switch (data.type) {
         case "init":
           policy = data.armerPolicy ?? { defaultListen: true, rules: [] };
+          multiplexEnabled = data.multiplex ?? false;
           await configure(data.settings, data.revision, data.monitor);
           send({ type: "ready" });
+          break;
+        case "wfm-multiplex":
+          multiplexEnabled = data.enabled;
+          await host.request({ type: "wfm-multiplex", enabled: data.enabled });
+          break;
+        case "wfm-stereo":
+          settings = { ...settings, stereo: data.enabled };
+          await host.request({ type: "wfm-stereo", enabled: data.enabled });
           break;
         case "configure":
           void configure(data.settings, data.revision, data.monitor, true);

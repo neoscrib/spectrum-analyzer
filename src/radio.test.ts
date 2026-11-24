@@ -71,6 +71,78 @@ async function stop(session: RadioSession) {
   await stopping;
 }
 
+it("resumes a late synthetic block immediately without skipping a whole audio interval or queueing IQ", async () => {
+  vi.useFakeTimers();
+  const session = new RadioSession();
+  try {
+    await session.test(defaults);
+    const worker = workers[0];
+    const generated = () =>
+      worker.messages.filter((message) => message.type === "test").length;
+    expect(generated()).toBe(1);
+    // The 27.3 ms deadline expires while the first block is still in flight.
+    await vi.advanceTimersByTimeAsync(35);
+    expect(generated()).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+    worker.onmessage?.({
+      data: {
+        type: "processed",
+        events: [],
+        rms: -20,
+        clipping: 0,
+        elapsed: 35,
+        samples: 65536,
+        revision: 1,
+      },
+    });
+    expect(generated()).toBe(2);
+    expect(workers).toHaveLength(1);
+    // It still allows only one in-flight block, even under sustained delay.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(generated()).toBe(2);
+    await session.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    await session.stop();
+    vi.useRealTimers();
+  }
+});
+
+it("changes multiplex visibility and stereo without retuning, resetting the decoder, or changing the source revision", async () => {
+  const session = new RadioSession();
+  session.setWfmMultiplex(true);
+  await session.connect(defaults);
+  const worker = workers[0];
+  expect(worker.messages[0]).toMatchObject({ type: "init", multiplex: true });
+  device.setCenterFrequency.mockClear();
+  device.setGain.mockClear();
+  session.setWfmMultiplex(false);
+  session.setWfmStereo(false);
+  session.setWfmMultiplex(true);
+  expect(worker.messages.slice(1)).toEqual([
+    { type: "wfm-multiplex", enabled: false },
+    { type: "wfm-stereo", enabled: false },
+    { type: "wfm-multiplex", enabled: true },
+  ]);
+  expect(device.setCenterFrequency).not.toHaveBeenCalled();
+  expect(device.setGain).not.toHaveBeenCalled();
+  const onFrame = vi.fn();
+  session.onFrame = onFrame;
+  worker.onmessage?.({
+    data: {
+      type: "processed",
+      events: [],
+      rms: -20,
+      clipping: 0,
+      elapsed: 5,
+      samples: 65536,
+      revision: 1,
+    },
+  });
+  expect(onFrame).toHaveBeenCalledOnce();
+  await stop(session);
+});
+
 it("opens the USB chooser in the click gesture, then initializes fixed-rate acquisition", async () => {
   const session = new RadioSession();
   const opening = session.connect(defaults);

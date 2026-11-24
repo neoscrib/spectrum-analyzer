@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Camera, Pause, Play, RotateCcw } from "lucide-react";
+import { spectrumPath } from "./spectrum-path";
 import {
   binRange,
   clampChannel,
@@ -214,15 +215,14 @@ export function Spectrum({
       }
       if (visible && average) {
         const trace = (values: Float32Array, color: string, fill: boolean) => {
-          ctx.beginPath();
-          for (let px = 0; px < w; px++) {
-            const [lo, hi] = binRange(px, w, values.length, s.span);
-            let v = -140;
-            for (let b = lo; b < hi; b++) v = Math.max(v, values[b]);
-            const y = yFor(v);
-            if (px === 0) ctx.moveTo(left, y);
-            else ctx.lineTo(left + px, y);
-          }
+          spectrumPath(
+            ctx,
+            values,
+            left,
+            w,
+            (px) => binRange(px, w, values.length, s.span),
+            yFor,
+          );
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.2 * dpr;
           ctx.stroke();

@@ -12,6 +12,13 @@ export class WfmDecoder {
         wasm.__wbg_wfmdecoder_free(ptr, 0);
     }
     /**
+     * @returns {number}
+     */
+    multiplex_sample_rate() {
+        const ret = wasm.wfmdecoder_multiplex_sample_rate(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @param {number} _offset_hz
      * @param {number} _bandwidth_hz
      * @param {number} deemphasis_us
@@ -45,6 +52,12 @@ export class WfmDecoder {
     /**
      * @param {boolean} enabled
      */
+    set_multiplex_enabled(enabled) {
+        wasm.wfmdecoder_set_multiplex_enabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @param {boolean} enabled
+     */
     set_stereo_enabled(enabled) {
         wasm.wfmdecoder_set_stereo_enabled(this.__wbg_ptr, enabled);
     }
@@ -54,6 +67,17 @@ export class WfmDecoder {
     stereo_locked() {
         const ret = wasm.wfmdecoder_stereo_locked(this.__wbg_ptr);
         return ret !== 0;
+    }
+    /**
+     * Owned, full-rate discriminator samples from the most recent block.
+     * Disabled by default; no tap allocation/copying occurs while disabled.
+     * @returns {Float32Array}
+     */
+    take_multiplex() {
+        const ret = wasm.wfmdecoder_take_multiplex(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
 }
 if (Symbol.dispose) WfmDecoder.prototype[Symbol.dispose] = WfmDecoder.prototype.free;

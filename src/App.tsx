@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { BrowserAudio } from "./audio";
 import { Spectrum } from "./components/Spectrum";
+import { MultiplexSpectrumView } from "./components/MultiplexSpectrum";
 import { WwvPanel } from "./components/WwvPanel";
 import { ArmerPanel } from "./components/ArmerPanel";
 import { PresetPanel } from "./components/PresetPanel";
@@ -61,7 +62,7 @@ import {
   receiverCapabilities,
   wwvFrequencies,
 } from "./decoders";
-import type { WwvStatus } from "./types";
+import type { WwvStatus, MultiplexSpectrum } from "./types";
 import {
   AUDIO_RATE,
   decoders,
@@ -160,6 +161,11 @@ export default function App() {
   const [frozen, setFrozen] = useState(false);
   const [peakHold, setPeakHold] = useState(false);
   const [floor, setFloor] = useState(-100);
+  const [multiplexOpen, setMultiplexOpen] = useState(false);
+  const multiplexEnabled = multiplexOpen && settings.decoder === "wfm";
+  const multiplexVisible = useRef(multiplexEnabled);
+  multiplexVisible.current = multiplexEnabled;
+  const multiplex = useRef<MultiplexSpectrum | null>(null);
   const [metrics, setMetrics] = useState(emptyMetrics);
   const [wwv, setWwv] = useState<WwvStatus | null>(null);
   const [wwvOrigin, setWwvOrigin] = useState<"live" | "test" | null>(null);
@@ -192,6 +198,8 @@ export default function App() {
       if (frame.spectrum) fft.current = frame.spectrum;
       let stereo = false;
       for (const event of frame.events) {
+        if (event.type === "spectrum" && multiplexVisible.current)
+          multiplex.current = event.multiplex;
         if (event.type === "selection" && event.protocol === "nfm")
           player.clear();
         if (
@@ -292,6 +300,10 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
+    multiplex.current = null;
+    radio.current!.setWfmMultiplex(multiplexEnabled);
+  }, [multiplexEnabled]);
+  useEffect(() => {
     try {
       localStorage.setItem("spectrum-settings", JSON.stringify(settings));
     } catch {
@@ -389,6 +401,7 @@ export default function App() {
       if (active) await radio.current!.update(next, monitor);
       audio.current!.clear();
       setMetrics((m) => ({ ...m, stereo: false }));
+      multiplex.current = null;
       setWwv(null);
       lastWwv.current = null;
       setWwvOrigin(active ? source : null);
@@ -879,6 +892,13 @@ export default function App() {
                 testSpeed={testSpeed}
               />
             )}
+            {multiplexEnabled && (
+              <MultiplexSpectrumView
+                data={multiplex}
+                active={active}
+                test={source === "test"}
+              />
+            )}
             {settings.decoder === "rtl433" && (
               <Rtl433Panel
                 status={rtlStatus}
@@ -1177,13 +1197,13 @@ export default function App() {
                     <div className="select-wrap full">
                       <select
                         id="audio-mode"
+                        disabled={busy}
                         value={settings.stereo ? "auto" : "mono"}
-                        onChange={(e) =>
-                          void apply({
-                            ...settings,
-                            stereo: e.target.value === "auto",
-                          })
-                        }
+                        onChange={(e) => {
+                          const stereo = e.target.value === "auto";
+                          radio.current!.setWfmStereo(stereo);
+                          setSettings((previous) => ({ ...previous, stereo }));
+                        }}
                       >
                         <option value="auto">
                           Auto stereo · mono fallback
@@ -1193,6 +1213,17 @@ export default function App() {
                       <ChevronDown size={13} />
                     </div>
                   </div>
+                )}
+                {settings.decoder === "wfm" && (
+                  <button
+                    className={`button multiplex-toggle ${multiplexOpen ? "active" : ""}`}
+                    aria-expanded={multiplexOpen}
+                    aria-controls="multiplex-spectrum"
+                    onClick={() => setMultiplexOpen((open) => !open)}
+                  >
+                    <Activity size={15} /> Multiplex spectrum
+                    <ChevronDown size={14} />
+                  </button>
                 )}
                 {settings.decoder === "nfm" && (
                   <div className="nfm-controls">

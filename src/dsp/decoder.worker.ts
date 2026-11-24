@@ -20,6 +20,14 @@ self.onmessage = ({ data }: MessageEvent<DecoderRequest & { id: number }>) => {
             data.monitor,
           );
           settings = data.settings;
+          decoder?.setMultiplexEnabled?.(data.multiplex);
+          break;
+        case "wfm-multiplex":
+          decoder?.setMultiplexEnabled?.(data.enabled);
+          break;
+        case "wfm-stereo":
+          decoder?.setStereoEnabled?.(data.enabled);
+          settings = { ...settings, stereo: data.enabled };
           break;
         case "recenter":
           if (!decoder?.recenter)
@@ -50,7 +58,11 @@ self.onmessage = ({ data }: MessageEvent<DecoderRequest & { id: number }>) => {
             [
               block.data,
               ...events.flatMap((e) =>
-                e.type === "audio" ? [e.samples.buffer] : [],
+                e.type === "audio"
+                  ? [e.samples.buffer]
+                  : e.type === "spectrum"
+                    ? [e.multiplex.bins.buffer]
+                    : [],
               ),
             ],
           );

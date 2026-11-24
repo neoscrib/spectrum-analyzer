@@ -65,6 +65,26 @@ Each image receives `latest` and full commit-SHA tags. After publishing, use `do
 
 Use **Try FM test signal** to run generated CU8 IQ through the exact same FFT, WASM decoder, and AudioWorklet. The source is clearly labeled, resets tuning to 100.0000 MHz / 100.1000 MHz, and produces a stereo multiplex with **1 kHz on the left, 2 kHz on the right**, a 19 kHz pilot, and two neighboring test carriers. It never accesses the receiver. Gain and PPM have no effect on this generated source.
 
+**Multiplex spectrum** in the WFM decoder panel opens a one-sided **0–65 kHz**
+plot below the RF spectrum. It observes the real FM discriminator output at
+**240 kSPS**, before pilot recovery, stereo decoding, the 15 kHz audio filters,
+de-emphasis, and conversion to 48 kHz PCM. Its 120 kHz Nyquist limit covers the
+whole display. Bin positions use the tap's actual sample rate and FFT length:
+4,096-point Hann FFTs give **58.6 Hz/bin** at the current rate. Linear bin power
+is averaged with a **0.6 s** time constant before conversion to dB; the display
+updates at most ten times per source second. The tap, FFT and publication are
+disabled while this view is closed.
+
+References identify **L+R at 0–15 kHz**, the **19 kHz pilot**, **L−R at 23–53 kHz
+centered on 38 kHz**, and **RDS/RBDS at 57 kHz**. The last is a frequency
+reference, not a presence detector; no RDS/RBDS messages or metadata are decoded.
+**Vertical zoom** and **Top** change only the displayed dB range, independently
+of tuner gain. Levels are relative to a full-deviation (75 kHz) tone, not RF
+dBm. The plot remains available in auto stereo and forced mono. View toggles
+and mono/stereo changes preserve decoder state, the sample clock, and queued
+audio. The FM test signal includes weak test sidebands at **55.8 and 58.2 kHz**
+around the 57 kHz reference, without encoding RDS data.
+
 The spectrum is an 8,192-point Hann-windowed FFT (293 Hz/bin at 2.4 MSPS). Display zoom does not increase FFT resolution. Trace smoothing, peak hold, display floor, waterfall, and PNG export are available. **Freeze view** leaves acquisition and audio running. Power is relative **dBFS**, not calibrated dBm or SNR. Input power includes the full captured band; ADC clipping counts samples at the converter limits. DSP processing is time spent processing one block divided by that block's RF duration, not total machine CPU usage.
 
 Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. In-app IQ replay, other modulation modes, RDS, and arbitrary-rate tuners remain future extensions.
@@ -213,7 +233,7 @@ This helper temporarily unbinds only `dvb_usb_rtl28xxu` interfaces on matching R
 - `src/dsp/capture.worker.ts`: stable FFT, power/clipping, source sample clock and recording-buffer ownership. It transfers each CU8 buffer to the decoder worker and back without cloning it. During a new decoder download, live buffers continue through spectrum/recording without decoding; synthetic generation waits for its decoder to load.
 - `src/dsp/decoder-host.ts` / `decoder.worker.ts`: disposable child worker and lazy plugin loading. Changing protocols terminates the old decoder worker, making its WASM instances, memory and JS caches eligible for reclamation, while retaining capture. Same-protocol settings changes reuse the worker but recreate native state. ARMER center-only moves and live policy changes preserve native state; NFM hold updates also retain it. Stop terminates capture and its child. Optional synthetic sources load only when requested. Browser tests observe old workers closing and ensure they do not accumulate.
 - To add a decoder, add its manifest, feature-isolated native build (or external engine), plugin adapter and dynamic factory import. UI/metadata modules must not import native glue. Binary events own their buffers and never reference freed WASM memory.
-- `wasm/src/wfm.rs` plus the shared core: WFM oscillator/mixer → 401-tap complex FIR and 10× decimation → phase-difference FM discriminator at 240 kHz → coherent 19 kHz pilot recovery / regenerated 38 kHz difference demodulation → matched 161-tap 15 kHz sum/difference filters and 5× decimation → 38 kHz discriminator-response correction / L/R matrix → per-channel de-emphasis/DC removal → interleaved 48 kHz stereo PCM. The pilot detector requires sufficient level and phase coherence for 80 ms, releases after 20 ms of loss, and fades separation over 40 ms. The phase relationship follows [ITU-R BS.450, §2.2](https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.450-2-199510-S!!PDF-E.pdf). State persists across USB blocks; configuration changes reset it with a short muted warmup.
+- `wasm/src/wfm.rs` plus the shared core: WFM oscillator/mixer → 401-tap complex FIR and 10× decimation → phase-difference FM discriminator at 240 kHz → coherent 19 kHz pilot recovery / regenerated 38 kHz difference demodulation → matched 161-tap 15 kHz sum/difference filters and 5× decimation → 38 kHz discriminator-response correction / L/R matrix → per-channel de-emphasis/DC removal → interleaved 48 kHz stereo PCM. The pilot detector requires sufficient level and phase coherence for 80 ms, releases after 20 ms of loss, and fades separation over 40 ms. The phase relationship follows [ITU-R BS.450, §2.2](https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.450-2-199510-S!!PDF-E.pdf). State persists across USB blocks; RF/filter/de-emphasis configuration changes reset it with a short muted warmup. Mono/stereo and multiplex-view changes preserve it. The optional full-rate multiplex tap sits immediately after the phase-difference discriminator and before the pilot/audio branches.
 - `public/audio-worklet.js`: bounded stereo audio FIFO, 60 ms prebuffer, and independent left/right interpolation to the actual audio device sample rate. Pause/stop/configuration changes flush queued audio.
 - `src/components/Spectrum.tsx`: FFT rendering and waterfall, independently cropped to the selected display span. FFT runs in the worker, with no main-thread sample processing.
 
@@ -227,7 +247,7 @@ Every decoder has a separate, lazily instantiated binary; selecting an idle deco
 | --- | --- | ---: |
 | None | None | 0 |
 | AM | `dsp_core` + `am` | 77 KB |
-| WFM | `dsp_core` + `wfm` | 83 KB |
+| WFM | `dsp_core` + `wfm` | 84 KB |
 | NFM | `nfm` | 125 KB |
 | OOK/ASK | `dsp_core` + `ook` | 146 KB |
 | WWV | `dsp_core` + `wwv` | 147 KB |
@@ -251,6 +271,7 @@ npm run test:browser:pwa # Self-hosted installability, offline cold decoders/aud
 npm run build            # Strict TypeScript and production build
 npm run check            # Frontend/API tests, native/actual WASM checks, and production build
 npm run test:browser     # WFM regression; dev or preview server must be running
+npm run test:browser:multiplex # WFM multiplex peaks, power zoom, mono, playback continuity
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
 npm run test:browser:recording # IQ save/metadata and saved-file offline decode

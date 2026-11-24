@@ -12,6 +12,8 @@ export interface DecoderPlugin {
   setPolicy?(policy: ArmerPolicy): void;
   setHold?(id: string | null): void;
   recenter?(settings: Settings): void;
+  setMultiplexEnabled?(enabled: boolean): void;
+  setStereoEnabled?(enabled: boolean): void;
 }
 /** These imports are intentionally dynamic: metadata/UI must never pull in a
  * native decoder, its glue, or its protocol dependencies. */

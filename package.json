@@ -11,6 +11,7 @@
     "build:wasm": "bash scripts/build-wasm.sh",
     "test:wasm": "bash scripts/test-wasm.sh",
     "test:browser": "node scripts/browser-check.mjs",
+    "test:browser:multiplex": "node scripts/browser-multiplex-check.mjs",
     "test:browser:wwv": "node scripts/browser-wwv-check.mjs",
     "test:browser:am": "node scripts/browser-am-check.mjs",
     "test:browser:nfm": "node scripts/browser-nfm-check.mjs",

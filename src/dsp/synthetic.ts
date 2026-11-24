@@ -1,5 +1,6 @@
 import { SAMPLE_RATE } from "../model";
 /** Stereo test fixture: 100.1 MHz, left 1 kHz / right 2 kHz, 19 kHz pilot.
+ * Weak suppressed-carrier test sidebands around 57 kHz; no RDS data encoded.
  * Two unmodulated neighboring carriers and low-level noise exercise the spectrum.
  * This is a generated test source, never presented as RF reception. */
 export class TestSignal {
@@ -16,7 +17,10 @@ export class TestSignal {
       const multiplex =
         (left + right) / 2 +
         ((left - right) / 2) * Math.sin(2 * pilotPhase) +
-        0.09 * Math.sin(pilotPhase);
+        0.09 * Math.sin(pilotPhase) +
+        0.025 *
+          Math.sin(2 * Math.PI * 57000 * time) *
+          Math.sin(2 * Math.PI * 1200 * time);
       this.phase +=
         (2 * Math.PI * (100_100_000 - center + 75_000 * multiplex)) /
         SAMPLE_RATE;

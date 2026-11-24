@@ -34,10 +34,18 @@ export interface WwvStatus {
   lastFrameSample: number | null;
   error: string | null;
 }
+/** Owned one-sided FFT bins. Bin k is k * sampleRate / fftSize Hz. */
+export interface MultiplexSpectrum {
+  bins: Float32Array;
+  sampleRate: number;
+  fftSize: number;
+  averages: number;
+}
 /** Audio buffers are interleaved L/R at 48 kHz. Worker transfers ownership to
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "spectrum"; protocol: "wfm"; multiplex: MultiplexSpectrum }
   | { type: "message"; protocol: "rtl433"; data: Record<string, unknown> }
   | { type: "telemetry"; protocol: "rtl433"; status: Rtl433Status }
   | { type: "telemetry"; protocol: "ook"; status: OokStatus }
@@ -63,6 +71,8 @@ export type DecoderEvent =
       state: "searching" | "minute" | "confirmed";
     };
 export type WorkerIn =
+  | { type: "wfm-multiplex"; enabled: boolean }
+  | { type: "wfm-stereo"; enabled: boolean }
   | { type: "recenter"; settings: Settings; revision: number }
   | {
       type: "init";
@@ -70,6 +80,7 @@ export type WorkerIn =
       revision: number;
       armerPolicy?: ArmerPolicy;
       monitor?: NfmMonitorConfig | null;
+      multiplex?: boolean;
     }
   | { type: "armer-policy"; policy: ArmerPolicy; revision: number }
   | {

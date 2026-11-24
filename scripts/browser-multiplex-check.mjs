@@ -14,6 +14,7 @@ await page.addInitScript(() => {
   window.__multiplexFrames = [];
   window.__pcmFrames = [];
   window.__commands = [];
+  window.__slow = [];
   window.__clears = 0;
   const NativeWorker = window.Worker;
   window.Worker = class extends NativeWorker {
@@ -21,10 +22,16 @@ await page.addInitScript(() => {
       super(...args);
       this.addEventListener("message", ({ data }) => {
         if (data.type !== "processed") return;
+        if (data.elapsed > 27)
+          window.__slow.push({
+            at: performance.now(),
+            elapsed: data.elapsed,
+            stage: window.__stage,
+          });
         for (const event of data.events) {
           if (event.type === "spectrum") {
             window.__multiplexFrames.push(event.multiplex);
-            if (window.__multiplexFrames.length > 100)
+            if (window.__multiplexFrames.length > 256)
               window.__multiplexFrames.shift();
           }
           if (event.type === "audio") {
@@ -80,18 +87,26 @@ async function verifyPeaks() {
   assert(frame, "Expected a real multiplex spectrum from the WFM worker");
   assert.equal(frame.sampleRate, 240000);
   assert.equal(frame.fftSize, 4096);
-  const peaks = [19000, 55800, 58200].map((expected) => {
-    const center = (expected * frame.fftSize) / frame.sampleRate;
-    let best = Math.round(center);
-    for (let bin = Math.floor(center) - 6; bin <= Math.ceil(center) + 6; bin++)
+  const peaks = [
+    { name: "pilot", lo: 18700, hi: 19300, expected: 19000 },
+    { name: "lower RDS band", lo: 54000, hi: 56700 },
+    { name: "upper RDS band", lo: 57300, hi: 60000 },
+  ].map(({ name, lo, hi, expected }) => {
+    let best = Math.floor((lo * frame.fftSize) / frame.sampleRate);
+    for (
+      let bin = best + 1;
+      bin <= Math.ceil((hi * frame.fftSize) / frame.sampleRate);
+      bin++
+    )
       if (frame.bins[bin] > frame.bins[best]) best = bin;
     const hz = (best * frame.sampleRate) / frame.fftSize;
-    assert(
-      Math.abs(hz - expected) < frame.sampleRate / frame.fftSize,
-      `Wrong peak for ${expected} Hz: ${hz}`,
-    );
-    assert(frame.bins[best] > (expected === 19000 ? -25 : -45));
-    return { expected, hz, db: frame.bins[best] };
+    if (expected)
+      assert(
+        Math.abs(hz - expected) < frame.sampleRate / frame.fftSize,
+        `Wrong peak for ${expected} Hz: ${hz}`,
+      );
+    assert(frame.bins[best] > (expected ? -25 : -50));
+    return { name, hz, db: frame.bins[best] };
   });
   return {
     sampleRate: frame.sampleRate,
@@ -141,6 +156,32 @@ try {
     )
     .toBeGreaterThan(0.1);
   await waitPcm(10);
+  await expect(page.getByTestId("rds-state")).toHaveText("Receiving", {
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("rds-pi")).toHaveText("1234");
+  await expect(page.getByTestId("rds-ps")).toHaveText("SPECTRUM", {
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("rds-text")).toHaveText(
+    "Spectrum SDR - browser WASM RDS/RBDS demo",
+    { timeout: 15000 },
+  );
+  await expect(page.getByTestId("rds-pty")).toHaveText("Country (10)");
+  await page.getByLabel("RDS program type region").selectOption("rds");
+  await expect(page.getByTestId("rds-pty")).toHaveText("Pop music (10)");
+  await page.getByLabel("RDS program type region").selectOption("rbds");
+  const rdsValidBefore = await page.getByTestId("rds-valid").textContent();
+  const rdsPanel = page.getByRole("region", { name: "RDS/RBDS reception" });
+  const details = rdsPanel.locator("details");
+  await expect(details).not.toHaveAttribute("open", "");
+  await rdsPanel.getByText("Broadcast details", { exact: true }).click();
+  await expect(page.getByTestId("rds-clock")).toHaveText(
+    "2026-11-24 18:30 UTC · local UTC−06:00",
+    { timeout: 15000 },
+  );
+  await rdsPanel.getByText("Broadcast details", { exact: true }).click();
+  await rdsPanel.screenshot({ path: "artifacts/rds-desktop.png" });
   assert.equal(
     await page.evaluate(() => window.__multiplexFrames.length),
     0,
@@ -198,6 +239,17 @@ try {
   await expect(page.getByText("Mono · forced", { exact: true })).toBeVisible();
   await waitPcm(16);
   const mono = await verifyPeaks();
+  await expect(page.getByTestId("rds-state")).toHaveText("Receiving");
+  await expect(page.getByTestId("rds-ps")).toHaveText("SPECTRUM");
+  await expect(page.getByTestId("rds-text")).toHaveText(
+    "Spectrum SDR - browser WASM RDS/RBDS demo",
+  );
+  assert(
+    Number(
+      (await page.getByTestId("rds-valid").textContent()).match(/\d+/)[0],
+    ) > Number(rdsValidBefore.match(/\d+/)[0]),
+    "Mono/view changes must preserve the RDS group counter",
+  );
   assert(
     mono.averages > beforeMono,
     "Forcing mono must not restart multiplex averaging",
@@ -226,6 +278,26 @@ try {
   await verifyPeaks();
   await page.getByLabel("Audio mode", { exact: true }).selectOption("auto");
   await waitPcm(12);
+  await page.evaluate(() => {
+    window.__stage = "rds-disable";
+  });
+  await page.getByLabel("Decode RDS/RBDS", { exact: true }).uncheck();
+  await expect(page.getByTestId("rds-state")).toHaveText("Disabled");
+  await waitPcm(8);
+  await page.evaluate(() => {
+    window.__stage = "rds-enable";
+  });
+  await page.getByLabel("Decode RDS/RBDS", { exact: true }).check();
+  await expect(page.getByTestId("rds-state")).toHaveText("Receiving", {
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("rds-ps")).toHaveText("SPECTRUM", {
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("rds-text")).toHaveText(
+    "Spectrum SDR - browser WASM RDS/RBDS demo",
+    { timeout: 15000 },
+  );
 
   const continuity = await page.evaluate((start) => {
     clearInterval(window.__audioMonitor);
@@ -240,12 +312,22 @@ try {
       revisions: Array.from(new Set(frames.map((frame) => frame.revision))),
       minRms: Math.min(...window.__rms),
       gaps: Object.fromEntries(
-        ["baseline", "opening", "mono", "closing", "reopening"].map((stage) => [
+        [
+          "baseline",
+          "opening",
+          "mono",
+          "closing",
+          "reopening",
+          "rds-disable",
+          "rds-enable",
+        ].map((stage) => [
           stage,
           window.__gaps.filter((gap) => gap.stage === stage).length,
         ]),
       ),
       sampleRate: window.__audio.context.sampleRate,
+      slowBlocks: window.__slow,
+      gapTimes: window.__gaps.slice(0, 20),
       audioState: window.__audio.context.state,
       clears: window.__clears,
       configureCommands: window.__commands.filter(
@@ -254,6 +336,10 @@ try {
       initCommands: window.__commands.filter((type) => type === "init").length,
     };
   }, boundary);
+  await writeFile(
+    "artifacts/wfm-continuity.json",
+    JSON.stringify(continuity, null, 2),
+  );
   assert(
     continuity.contiguous,
     "View changes must preserve the input sample clock",
@@ -278,6 +364,7 @@ try {
     path: "artifacts/multiplex-mobile.png",
     fullPage: true,
   });
+  await rdsPanel.screenshot({ path: "artifacts/rds-mobile.png" });
   assert(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -304,6 +391,14 @@ try {
   const result = {
     stereo,
     mono,
+    rds: {
+      pi: "1234",
+      ps: "SPECTRUM",
+      radioText: "Spectrum SDR - browser WASM RDS/RBDS demo",
+      firstValidCount: rdsValidBefore,
+      survivesMonoAndSpectrumToggle: true,
+      toggleReacquired: true,
+    },
     continuity,
     offline: process.env.CHECK_OFFLINE === "1",
     errors,

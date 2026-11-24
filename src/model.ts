@@ -21,6 +21,7 @@ export interface Settings {
   decoder: DecoderId;
   deemphasis: number;
   stereo: boolean;
+  rds: boolean;
   gain: number | null;
   ppm: number;
   squelch: number | null;
@@ -38,6 +39,7 @@ export const defaults: Settings = {
   decoder: "wfm",
   deemphasis: 75,
   stereo: true,
+  rds: true,
   gain: 25.4,
   ppm: 0,
   squelch: -65,
@@ -87,6 +89,8 @@ export function validateSettings(s: Settings): void {
     throw Error("Choose 50 µs, 75 µs, or no de-emphasis.");
   if (typeof s.stereo !== "boolean")
     throw Error("Choose Auto stereo or Mono audio.");
+  if (typeof s.rds !== "boolean")
+    throw Error("Choose whether to decode RDS/RBDS.");
   if (
     s.squelch !== null &&
     (!Number.isFinite(s.squelch) || s.squelch < -100 || s.squelch > -20)

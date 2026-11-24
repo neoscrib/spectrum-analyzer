@@ -20,6 +20,8 @@ import {
 import { BrowserAudio } from "./audio";
 import { Spectrum } from "./components/Spectrum";
 import { MultiplexSpectrumView } from "./components/MultiplexSpectrum";
+import { RdsPanel } from "./components/RdsPanel";
+import type { RdsStatus } from "./rds/model";
 import { WwvPanel } from "./components/WwvPanel";
 import { ArmerPanel } from "./components/ArmerPanel";
 import { PresetPanel } from "./components/PresetPanel";
@@ -166,6 +168,8 @@ export default function App() {
   const multiplexVisible = useRef(multiplexEnabled);
   multiplexVisible.current = multiplexEnabled;
   const multiplex = useRef<MultiplexSpectrum | null>(null);
+  const [rds, setRds] = useState<RdsStatus | null>(null);
+  const [rdsTest, setRdsTest] = useState(false);
   const [metrics, setMetrics] = useState(emptyMetrics);
   const [wwv, setWwv] = useState<WwvStatus | null>(null);
   const [wwvOrigin, setWwvOrigin] = useState<"live" | "test" | null>(null);
@@ -211,8 +215,10 @@ export default function App() {
           )
         )
           player.push(event.samples);
-        if (event.type === "telemetry" && event.protocol === "wfm")
+        if (event.type === "telemetry" && event.protocol === "wfm") {
           stereo = event.stereo;
+          if (event.rds) setRds(event.rds);
+        }
         if (event.type === "telemetry" && event.protocol === "rtl433") {
           rtlLatest.current = event.status;
           if (event.status.protocols) setRtlProtocols(event.status.protocols);
@@ -402,6 +408,7 @@ export default function App() {
       audio.current!.clear();
       setMetrics((m) => ({ ...m, stereo: false }));
       multiplex.current = null;
+      setRds(null);
       setWwv(null);
       lastWwv.current = null;
       setWwvOrigin(active ? source : null);
@@ -458,6 +465,9 @@ export default function App() {
     setWwv(null);
     lastWwv.current = null;
     setWwvOrigin(kind);
+    setRds(null);
+    setRdsTest(kind === "test");
+    multiplex.current = null;
     armerPending.current = [];
     armerStatus.current = null;
     setArmerFeed({ status: null, events: [] });
@@ -899,6 +909,14 @@ export default function App() {
                 test={source === "test"}
               />
             )}
+            {settings.decoder === "wfm" && (
+              <RdsPanel
+                status={rds}
+                enabled={settings.rds}
+                active={active}
+                test={rdsTest}
+              />
+            )}
             {settings.decoder === "rtl433" && (
               <Rtl433Panel
                 status={rtlStatus}
@@ -1224,6 +1242,25 @@ export default function App() {
                     <Activity size={15} /> Multiplex spectrum
                     <ChevronDown size={14} />
                   </button>
+                )}
+                {settings.decoder === "wfm" && (
+                  <label className="checkbox-label rds-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.rds}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const enabled = e.target.checked;
+                        radio.current!.setWfmRds(enabled);
+                        setRds(null);
+                        setSettings((previous) => ({
+                          ...previous,
+                          rds: enabled,
+                        }));
+                      }}
+                    />
+                    Decode RDS/RBDS
+                  </label>
                 )}
                 {settings.decoder === "nfm" && (
                   <div className="nfm-controls">

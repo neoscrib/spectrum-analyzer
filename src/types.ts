@@ -1,4 +1,5 @@
 import type { Settings } from "./model";
+import type { RdsStatus } from "./rds/model";
 import type { Rtl433Status } from "./rtl433/model";
 import type { OokBurst, OokStatus } from "./ook/model";
 import type { ArmerPolicy, ArmerStatus, P25Event } from "./armer/model";
@@ -62,7 +63,13 @@ export type DecoderEvent =
       channels: 2;
       firstSample: number;
     }
-  | { type: "telemetry"; protocol: "wfm"; stereo: boolean; pilotLevel: number }
+  | {
+      type: "telemetry";
+      protocol: "wfm";
+      stereo: boolean;
+      pilotLevel: number;
+      rds?: RdsStatus;
+    }
   | { type: "timecode"; protocol: "wwv"; status: WwvStatus }
   | {
       type: "sync";
@@ -73,6 +80,7 @@ export type DecoderEvent =
 export type WorkerIn =
   | { type: "wfm-multiplex"; enabled: boolean }
   | { type: "wfm-stereo"; enabled: boolean }
+  | { type: "wfm-rds"; enabled: boolean }
   | { type: "recenter"; settings: Settings; revision: number }
   | {
       type: "init";

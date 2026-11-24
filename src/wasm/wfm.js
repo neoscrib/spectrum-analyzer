@@ -50,10 +50,31 @@ export class WfmDecoder {
         return v2;
     }
     /**
+     * @returns {string}
+     */
+    rds_status() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wfmdecoder_rds_status(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @param {boolean} enabled
      */
     set_multiplex_enabled(enabled) {
         wasm.wfmdecoder_set_multiplex_enabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    set_rds_enabled(enabled) {
+        wasm.wfmdecoder_set_rds_enabled(this.__wbg_ptr, enabled);
     }
     /**
      * @param {boolean} enabled

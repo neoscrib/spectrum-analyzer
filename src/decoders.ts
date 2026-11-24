@@ -1,13 +1,6 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
 export type DecoderId =
-  | "none"
-  | "wfm"
-  | "wwv"
-  | "am"
-  | "armer"
-  | "nfm"
-  | "ook"
-  | "rtl433";
+  "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook" | "rtl433";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -32,7 +25,7 @@ export const decoders: DecoderManifest[] = [
   {
     id: "wfm",
     name: "WFM · broadcast FM",
-    description: "Wideband FM · auto stereo · 48 kHz",
+    description: "Wideband FM · auto stereo · RDS/RBDS · 48 kHz",
     requirements: {
       minSampleRate: 240000,
       bandwidthHz: 200000,

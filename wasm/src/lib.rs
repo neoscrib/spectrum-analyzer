@@ -10,6 +10,8 @@ mod channelizer;
 #[cfg(feature = "core")]
 pub use channelizer::{Channelizer, IqChannelizer};
 #[cfg(feature = "wfm")]
+mod rds;
+#[cfg(feature = "wfm")]
 mod wfm;
 #[cfg(feature = "wfm")]
 pub use wfm::WfmDecoder;

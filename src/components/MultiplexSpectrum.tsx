@@ -236,8 +236,8 @@ export function MultiplexSpectrumView({
       </p>
       {test && (
         <p className="armer-test-note">
-          Generated FM test signal · 19 kHz pilot and test sidebands at 55.8 and
-          58.2 kHz. No RDS messages are encoded.
+          Generated FM test signal · 19 kHz pilot and encoded test RDS around 57
+          kHz. Station information appears in the RDS/RBDS panel.
         </p>
       )}
     </section>

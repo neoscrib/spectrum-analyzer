@@ -59,7 +59,7 @@ Each image receives `latest` and full commit-SHA tags. After publishing, use `do
 2. Enter a **center frequency** in MHz and press **Tune**. This changes the hardware frequency. Retuning preserves the decoder's offset for WFM/AM/NFM/OOK/WWV. ARMER keeps its absolute control frequency fixed while you reposition the capture.
 3. Set **display span** from 25 kHz to 2.4 MHz. This crops the spectrum around the center; the hardware continues capturing at **2.4 MSPS**. Zooming does not change decoder tuning or its channel filter. Spans wider than the captured band are intentionally unavailable; there is no sweep mode.
 4. Select **Decode as… → WFM**, then click a station on the spectrum or enter its **decoder frequency** and press **Set**. The decoder independently mixes and filters that channel from the captured IQ. Its entire channel must fit inside the capture. Keyboard users can focus the spectrum and use left/right arrows (10 kHz; Shift for 100 kHz).
-5. Click **Play audio**. WFM outputs **stereo, 48 kHz PCM**, with a 15 kHz audio low-pass per channel and selectable 75 µs, 50 µs, or no de-emphasis. **Auto stereo** recovers the broadcast’s 19 kHz pilot and 38 kHz difference channel. The output indicator reports **Stereo · pilot locked** after acquisition. Without a stable pilot it smoothly falls back to mono; choose **Mono** to force mono output on noisy stations. RDS is not implemented.
+5. Click **Play audio**. WFM outputs **stereo, 48 kHz PCM**, with a 15 kHz audio low-pass per channel and selectable 75 µs, 50 µs, or no de-emphasis. **Auto stereo** recovers the broadcast’s 19 kHz pilot and 38 kHz difference channel. The output indicator reports **Stereo · pilot locked** after acquisition. Without a stable pilot it smoothly falls back to mono; choose **Mono** to force mono output on noisy stations. The WFM RDS/RBDS panel decodes broadcast station information by default.
 
 **Channel width** is the digital WFM filter width, independently selectable from 150–220 kHz. **Tuner gain** and **frequency correction** apply with the RF settings button while connected. Connecting uses the currently displayed RF draft values. The RF panel explicitly shows the applied/saved values and flags pending changes, so a slider draft cannot be mistaken for a hardware setting. The driver rounds manual gain to a supported hardware step. Bias tee stays off. Stop releases the USB interface; reconnect reuses the selected receiver. After a disconnect/error, the next connection opens the chooser again.
 
@@ -77,17 +77,65 @@ disabled while this view is closed.
 
 References identify **L+R at 0–15 kHz**, the **19 kHz pilot**, **L−R at 23–53 kHz
 centered on 38 kHz**, and **RDS/RBDS at 57 kHz**. The last is a frequency
-reference, not a presence detector; no RDS/RBDS messages or metadata are decoded.
+reference, not a presence detector; the separate RDS/RBDS panel confirms reception from CRC-valid data.
 **Vertical zoom** and **Top** change only the displayed dB range, independently
 of tuner gain. Levels are relative to a full-deviation (75 kHz) tone, not RF
 dBm. The plot remains available in auto stereo and forced mono. View toggles
 and mono/stereo changes preserve decoder state, the sample clock, and queued
-audio. The FM test signal includes weak test sidebands at **55.8 and 58.2 kHz**
-around the 57 kHz reference, without encoding RDS data.
+audio. The FM test signal now includes actual encoded test RDS around **57 kHz**,
+with the synthetic station name **SPECTRUM** and a fixed RadioText message.
 
 The spectrum is an 8,192-point Hann-windowed FFT (293 Hz/bin at 2.4 MSPS). Display zoom does not increase FFT resolution. Trace smoothing, peak hold, display floor, waterfall, and PNG export are available. **Freeze view** leaves acquisition and audio running. Power is relative **dBFS**, not calibrated dBm or SNR. Input power includes the full captured band; ADC clipping counts samples at the converter limits. DSP processing is time spent processing one block divided by that block's RF duration, not total machine CPU usage.
 
-Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. In-app IQ replay, other modulation modes, RDS, and arbitrary-rate tuners remain future extensions.
+Settings persist in browser-local storage. IQ/audio are processed locally and are not uploaded. In-app IQ replay, other modulation modes, and arbitrary-rate tuners remain future extensions.
+
+## RDS / RBDS station information
+
+**Decode RDS/RBDS** is enabled by default for WFM. The station panel shows the
+transmitted **PI code**, eight-character **Program Service name**, **RadioText**,
+and **program type**. Broadcast details are collapsed by default and contain
+TP/TA, music/speech, the broadcast UTC clock and local offset, group counts, and
+the last validated group. Choose **RBDS · North America** or **RDS · International**
+for PTY labels; this is a saved display preference and does not retune the radio.
+PI is displayed as transmitted, without guessing call letters from it.
+
+The Rust WFM module feeds its real **240 kSPS discriminator output** directly to
+an independent 57 kHz quadrature downconverter, narrow low-pass filter and
+24 kSPS decimator. Parallel biphase timing hypotheses and complex differential
+symbol decisions recover the 1187.5 bit/s stream without depending on stereo
+pilot lock. The receiver accepts only complete A/B/C(or C′)/D groups with all
+four (26,16) CRC/offset checks valid, including the repeated PI in version B.
+Two unique valid groups with the same PI confirm reception. This first version
+rejects damaged blocks rather than attempting error correction. A spectral peak
+or pilot lock alone never reports RDS reception.
+
+Implemented metadata groups: **0A/0B** (PS and traffic/music flags), **2A/2B**
+(64/32-character RadioText with A/B message resets), and **4A** (clock/date).
+PS segments must repeat consistently; RadioText is published after all segments
+through its terminator, or its entire fixed-length buffer, have arrived.
+The G0 repertoire includes accented characters. Other group types are counted;
+AF, RT+, TMC, EON and RDS2 additional streams are not interpreted. The protocol
+references are [NRSC-4-B](https://www.nrscstandards.org/standards-and-guidelines/documents/archive/nrsc-4-b-standard-2005.pdf)
+and its [coding/character annexes](https://www.nrscstandards.org/standards-and-guidelines/documents/archive/nrsc-4-a-annexes-2005.pdf).
+
+RDS reception works with the multiplex plot closed and with forced mono audio.
+The optional spectrum still performs no FFT work while closed. Switching audio
+mode, toggling the plot, and toggling RDS do not reset PCM or retune the receiver.
+Disabling RDS releases its demodulator state and clears station information;
+re-enabling reacquires it. After two seconds without a validated group, the
+panel reports signal loss and labels retained fields as last decoded information.
+The transmitted clock is displayed as data and does not change the system clock.
+
+**Try FM test signal** transmits synthetic PI `1234`, PS **SPECTRUM**, RadioText
+**Spectrum SDR - browser WASM RDS/RBDS demo**, PTY 10, and a fixed test CT timestamp.
+It uses a separate JavaScript differential/biphase encoder and runs through the
+same CU8 channelizer, WFM demodulator and Rust RDS receiver as live input.
+Tests cover independent published CRC words, every single-bit group corruption,
+C′ handling, text assembly/reset, noise/tone rejection, carrier phase/error,
+clock drift, PCM equality with RDS enabled/disabled, and browser playback.
+An independent [redsea MPX recording](https://github.com/windytan/redsea/blob/b16943e17f6b954c87a70a35307691fc1bf5b735/test/resources/mpx-testfile-yksi.flac)
+also recovers its expected PI `6201` and PTY 14 through the actual WASM.
+Live RDS reception with the attached receiver has not been tested for this change.
 
 ## Record IQ
 
@@ -247,7 +295,7 @@ Every decoder has a separate, lazily instantiated binary; selecting an idle deco
 | --- | --- | ---: |
 | None | None | 0 |
 | AM | `dsp_core` + `am` | 77 KB |
-| WFM | `dsp_core` + `wfm` | 84 KB |
+| WFM + RDS/RBDS | `dsp_core` + `wfm` | 125 KB |
 | NFM | `nfm` | 125 KB |
 | OOK/ASK | `dsp_core` + `ook` | 146 KB |
 | WWV | `dsp_core` + `wwv` | 147 KB |
@@ -271,7 +319,8 @@ npm run test:browser:pwa # Self-hosted installability, offline cold decoders/aud
 npm run build            # Strict TypeScript and production build
 npm run check            # Frontend/API tests, native/actual WASM checks, and production build
 npm run test:browser     # WFM regression; dev or preview server must be running
-npm run test:browser:multiplex # WFM multiplex peaks, power zoom, mono, playback continuity
+npm run test:browser:multiplex # Multiplex plot, RDS, mono and playback continuity
+npm run test:browser:rds       # Alias for the combined WFM/multiplex/RDS browser checks
 npm run test:browser:wwv # Actual CU8 AM IQ -> WASM -> confirmed time code and AM audio
 npm run test:browser:am  # Standalone AM audio, bandwidths, tuning, playback controls
 npm run test:browser:recording # IQ save/metadata and saved-file offline decode

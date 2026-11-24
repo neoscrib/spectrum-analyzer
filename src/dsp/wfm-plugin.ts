@@ -3,6 +3,7 @@ import { initCore, createChannelizer } from "./channelizer";
 import type { Settings } from "../model";
 import type { DecoderPlugin } from "./plugins";
 import type { DecoderEvent } from "../types";
+import type { RdsStatus } from "../rds/model";
 import { MultiplexAnalyzer } from "./multiplex-spectrum";
 export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
   await Promise.all([init(), initCore()]);
@@ -13,6 +14,9 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
     s.deemphasis,
   );
   native.set_stereo_enabled(s.stereo);
+  native.set_rds_enabled(s.rds);
+  let samplesSinceRds = 0,
+    rdsDue = true;
   let multiplex: MultiplexAnalyzer | undefined;
   let samplesSinceSpectrum = 0;
   return {
@@ -27,8 +31,20 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
     setStereoEnabled(enabled) {
       native.set_stereo_enabled(enabled);
     },
+    setRdsEnabled(enabled) {
+      native.set_rds_enabled(enabled);
+      rdsDue = true;
+    },
     process(iq, firstSample) {
-      const samples = native.process_baseband(front.process(iq));
+      const baseband = front.process(iq);
+      const samples = native.process_baseband(baseband);
+      samplesSinceRds += baseband.length / 2;
+      let rds: RdsStatus | undefined;
+      if (rdsDue || samplesSinceRds >= native.multiplex_sample_rate() / 5) {
+        rds = JSON.parse(native.rds_status()) as RdsStatus;
+        samplesSinceRds = 0;
+        rdsDue = false;
+      }
       const events: DecoderEvent[] = [
         {
           type: "audio",
@@ -42,6 +58,7 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
           protocol: "wfm",
           stereo: native.stereo_locked(),
           pilotLevel: native.pilot_level(),
+          rds,
         },
       ];
       if (multiplex) {

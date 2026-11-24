@@ -29,6 +29,10 @@ self.onmessage = ({ data }: MessageEvent<DecoderRequest & { id: number }>) => {
           decoder?.setStereoEnabled?.(data.enabled);
           settings = { ...settings, stereo: data.enabled };
           break;
+        case "wfm-rds":
+          decoder?.setRdsEnabled?.(data.enabled);
+          settings = { ...settings, rds: data.enabled };
+          break;
         case "recenter":
           if (!decoder?.recenter)
             throw Error(

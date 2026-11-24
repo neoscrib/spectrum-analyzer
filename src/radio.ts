@@ -118,6 +118,12 @@ export class RadioSession {
       if (this.worker) this.post({ type: "wfm-stereo", enabled });
     }
   }
+  setWfmRds(enabled: boolean) {
+    if (this.settings?.decoder === "wfm") {
+      this.settings = { ...this.settings, rds: enabled };
+      if (this.worker) this.post({ type: "wfm-rds", enabled });
+    }
+  }
   setTestSpeed(speed: number) {
     this.testSpeed = speed === 16 ? 16 : 1;
   }

@@ -125,6 +125,10 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
           settings = { ...settings, stereo: data.enabled };
           await host.request({ type: "wfm-stereo", enabled: data.enabled });
           break;
+        case "wfm-rds":
+          settings = { ...settings, rds: data.enabled };
+          await host.request({ type: "wfm-rds", enabled: data.enabled });
+          break;
         case "configure":
           void configure(data.settings, data.revision, data.monitor, true);
           break;

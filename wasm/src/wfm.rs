@@ -3,6 +3,7 @@
 use super::Downconverter;
 #[cfg(test)]
 use super::INPUT_RATE;
+use super::rds::{RdsDecoder, RdsStatus};
 use super::{AUDIO_RATE, Fir, IF_RATE, lowpass};
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
@@ -113,6 +114,7 @@ pub struct WfmDecoder {
     warmup: usize,
     // Optional observation only: never feeds back into the audio path.
     multiplex: Option<Vec<f32>>,
+    rds: Option<RdsDecoder>,
 }
 
 #[wasm_bindgen]
@@ -145,6 +147,7 @@ impl WfmDecoder {
             dc_output: [0.0; 2],
             warmup: 480,
             multiplex: None,
+            rds: Some(RdsDecoder::new()),
         }
     }
 
@@ -156,6 +159,21 @@ impl WfmDecoder {
     }
     pub fn pilot_level(&self) -> f32 {
         self.pilot.level as f32
+    }
+    pub fn set_rds_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.rds.get_or_insert_with(RdsDecoder::new);
+        } else {
+            self.rds = None;
+        }
+    }
+    pub fn rds_status(&self) -> String {
+        let status = self
+            .rds
+            .as_ref()
+            .map(RdsDecoder::status)
+            .unwrap_or_else(RdsStatus::default);
+        serde_json::to_string(&status).unwrap_or_else(|_| "{}".into())
     }
 
     pub fn multiplex_sample_rate(&self) -> f64 {
@@ -201,6 +219,9 @@ impl WfmDecoder {
             // audio filtering, 5:1 PCM decimation and de-emphasis.
             if let Some(tap) = &mut self.multiplex {
                 tap.push(fm);
+            }
+            if let Some(rds) = &mut self.rds {
+                rds.process(fm);
             }
             let carrier = self.pilot.process(fm);
             self.audio.push(fm);

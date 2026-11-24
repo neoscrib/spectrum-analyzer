@@ -11,7 +11,9 @@ export class WfmDecoder {
      * Interleaved normalized F32 I/Q at 240 kSPS, with owned output PCM.
      */
     process_baseband(iq: Float32Array | number[]): Float32Array;
+    rds_status(): string;
     set_multiplex_enabled(enabled: boolean): void;
+    set_rds_enabled(enabled: boolean): void;
     set_stereo_enabled(enabled: boolean): void;
     stereo_locked(): boolean;
     /**
@@ -30,7 +32,9 @@ export interface InitOutput {
     readonly wfmdecoder_new: (a: number, b: number, c: number) => number;
     readonly wfmdecoder_pilot_level: (a: number) => number;
     readonly wfmdecoder_process_baseband: (a: number, b: number, c: number) => [number, number];
+    readonly wfmdecoder_rds_status: (a: number) => [number, number];
     readonly wfmdecoder_set_multiplex_enabled: (a: number, b: number) => void;
+    readonly wfmdecoder_set_rds_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_set_stereo_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_stereo_locked: (a: number) => number;
     readonly wfmdecoder_take_multiplex: (a: number) => [number, number];

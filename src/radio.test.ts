@@ -118,10 +118,12 @@ it("changes multiplex visibility and stereo without retuning, resetting the deco
   device.setGain.mockClear();
   session.setWfmMultiplex(false);
   session.setWfmStereo(false);
+  session.setWfmRds(false);
   session.setWfmMultiplex(true);
   expect(worker.messages.slice(1)).toEqual([
     { type: "wfm-multiplex", enabled: false },
     { type: "wfm-stereo", enabled: false },
+    { type: "wfm-rds", enabled: false },
     { type: "wfm-multiplex", enabled: true },
   ]);
   expect(device.setCenterFrequency).not.toHaveBeenCalled();

@@ -16,6 +16,7 @@ export type DecoderRequest =
   | { type: "recenter"; settings: Settings }
   | { type: "wfm-multiplex"; enabled: boolean }
   | { type: "wfm-stereo"; enabled: boolean }
+  | { type: "wfm-rds"; enabled: boolean }
   | { type: "armer-policy"; policy: ArmerPolicy }
   | { type: "nfm-hold"; holdId: string | null };
 export type DecodedBlock = { data: ArrayBuffer; events: DecoderEvent[] };

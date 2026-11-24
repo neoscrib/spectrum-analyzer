@@ -62,3 +62,9 @@ workbox-routing, and workbox-strategies) — MIT
 https://github.com/GoogleChrome/workbox
 License: workbox-MIT.txt
 Built with vite-plugin-pwa 2.0.0; Workbox is bundled locally, not loaded from a CDN.
+
+RDS/RBDS demodulation and group assembly are original Rust code following
+NRSC-4 / IEC 62106. The G0 character mapping and an independent transmitted-bit
+test vector were cross-checked/adapted from redsea (MIT), Oona Räisänen:
+https://github.com/windytan/redsea (b16943e17f6b954c87a70a35307691fc1bf5b735).
+License and copyright notice: redsea-MIT.txt.

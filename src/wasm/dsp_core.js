@@ -4,6 +4,12 @@
  * Shared runtime DDC. All calls process blocks; no per-sample JS callbacks.
  */
 export class Channelizer {
+    static __wrap(ptr) {
+        const obj = Object.create(Channelizer.prototype);
+        obj.__wbg_ptr = ptr;
+        ChannelizerFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
@@ -41,6 +47,19 @@ export class Channelizer {
         var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v2;
+    }
+    /**
+     * Staged broadcast-FM channel selection, retaining 240 kSPS output.
+     * @param {number} offset
+     * @param {number} bandwidth
+     * @returns {Channelizer}
+     */
+    static wfm(offset, bandwidth) {
+        const ret = wasm.channelizer_wfm(offset, bandwidth);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Channelizer.__wrap(ret[0]);
     }
 }
 if (Symbol.dispose) Channelizer.prototype[Symbol.dispose] = Channelizer.prototype.free;

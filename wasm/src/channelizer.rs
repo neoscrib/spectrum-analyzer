@@ -1,14 +1,29 @@
 //! Shared CU8 channel selection for external protocol engines.
 use super::Downconverter;
+use super::dsp::WfmDownconverter;
 use wasm_bindgen::prelude::*;
 
 /// Shared runtime DDC. All calls process blocks; no per-sample JS callbacks.
 #[wasm_bindgen]
 pub struct Channelizer {
-    front: Downconverter,
+    front: Front,
+}
+enum Front {
+    Standard(Downconverter),
+    Wfm(WfmDownconverter),
 }
 #[wasm_bindgen]
 impl Channelizer {
+    /// Staged broadcast-FM channel selection, retaining 240 kSPS output.
+    pub fn wfm(offset: f64, bandwidth: f64) -> Result<Self, JsValue> {
+        if !offset.is_finite() || !bandwidth.is_finite() {
+            return Err(JsValue::from_str("Invalid WFM channelizer configuration"));
+        }
+        Ok(Self {
+            front: Front::Wfm(WfmDownconverter::new(offset, bandwidth)),
+        })
+    }
+
     #[wasm_bindgen(constructor)]
     pub fn new(offset: f64, cutoff: f64, taps: usize, decimation: usize) -> Result<Self, JsValue> {
         if !offset.is_finite()
@@ -22,12 +37,15 @@ impl Channelizer {
             return Err(JsValue::from_str("Invalid channelizer configuration"));
         }
         Ok(Self {
-            front: Downconverter::new(offset, cutoff, taps, decimation),
+            front: Front::Standard(Downconverter::new(offset, cutoff, taps, decimation)),
         })
     }
     /// CU8 2.4 MSPS -> owned interleaved normalized F32 I/Q at 2.4M / decimation.
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
-        self.front.process(iq)
+        match &mut self.front {
+            Front::Standard(front) => front.process(iq),
+            Front::Wfm(front) => front.process(iq),
+        }
     }
 }
 

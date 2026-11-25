@@ -1,7 +1,8 @@
 //! RDS/RBDS data-stream 0 from the real, deviation-normalized FM multiplex.
 //! NRSC-4 / IEC 62106: 57 kHz, differential biphase at 1187.5 bit/s,
 //! shortened cyclic (26,16) blocks with A/B/C(C')/D offset words.
-use super::{Fir, IF_RATE, lowpass};
+use super::dsp::{ComplexDecimator, decimate_five_taps};
+use super::{IF_RATE, lowpass};
 use serde::Serialize;
 use std::f64::consts::PI;
 
@@ -254,10 +255,11 @@ impl Station {
 pub struct RdsDecoder {
     osc: [f64; 2],
     step: [f64; 2],
-    filter_i: Fir,
-    filter_q: Fir,
+    first: ComplexDecimator,
+    second: ComplexDecimator,
     timing: Vec<Timing>,
     samples: u64,
+    oscillator_count: usize,
     last_accepted: Option<u64>,
     candidate_pi: Option<u16>,
     candidate_count: u32,
@@ -268,17 +270,18 @@ pub struct RdsDecoder {
 impl RdsDecoder {
     pub fn new() -> Self {
         let phase = 2.0 * PI * 57000.0 / IF_RATE;
-        let taps = lowpass(401, 2600.0, IF_RATE);
         Self {
             osc: [1.0, 0.0],
             step: [phase.cos(), phase.sin()],
-            filter_i: Fir::new(taps.clone()),
-            filter_q: Fir::new(taps),
+            // 240 -> 48 -> 24 kSPS with the same 2.6 kHz channel response.
+            first: ComplexDecimator::new(decimate_five_taps(IF_RATE), 5),
+            second: ComplexDecimator::new(lowpass(81, 2600.0, IF_RATE / 5.0), 2),
             // Parallel timing hypotheses remain active while receiving. As a
             // source clock drifts, CRC-valid groups select the useful phase;
             // duplicate groups from neighboring hypotheses are suppressed.
             timing: (0..16).map(|n| Timing::new(n as f64 / 16.0)).collect(),
             samples: 0,
+            oscillator_count: 0,
             last_accepted: None,
             candidate_pi: None,
             candidate_count: 0,
@@ -290,23 +293,29 @@ impl RdsDecoder {
 
     pub fn process(&mut self, fm: f32) {
         self.samples += 1;
-        self.filter_i.push((fm as f64 * self.osc[0]) as f32);
-        self.filter_q.push((-fm as f64 * self.osc[1]) as f32);
+        let mixed = [
+            (fm as f64 * self.osc[0]) as f32,
+            (-fm as f64 * self.osc[1]) as f32,
+        ];
         self.osc = [
             self.osc[0] * self.step[0] - self.osc[1] * self.step[1],
             self.osc[0] * self.step[1] + self.osc[1] * self.step[0],
         ];
-        if self.samples % 4096 == 0 {
+        self.oscillator_count += 1;
+        if self.oscillator_count == 4096 {
+            self.oscillator_count = 0;
             let norm = self.osc[0].hypot(self.osc[1]);
             self.osc[0] /= norm;
             self.osc[1] /= norm;
         }
-        if self.samples % 10 != 0 {
+        let Some((re, im)) = self.first.push(mixed[0], mixed[1]) else {
             return;
-        }
-        let (re, im) = (self.filter_i.value() as f64, self.filter_q.value() as f64);
+        };
+        let Some((re, im)) = self.second.push(re, im) else {
+            return;
+        };
         for n in 0..self.timing.len() {
-            if let Some(group) = self.timing[n].sample(re, im) {
+            if let Some(group) = self.timing[n].sample(re as f64, im as f64) {
                 self.accept(group);
             }
         }
@@ -424,11 +433,12 @@ mod tests {
     fn demodulates_arbitrary_phase_and_clock_offset_without_stereo_pilot() {
         let group = [0x1234, 0x0408, 0x0000, 0x5445];
         let bits = encoded(group);
-        for (phase, ppm, offset, seconds) in [
-            (0.0, 0.0, 0.0, 2.0),
-            (1.3, 40.0, 12.0, 2.0),
-            (2.7, -50.0, -15.0, 2.0),
-            (0.8, 500.0, 28.5, 8.0),
+        for (phase, ppm, offset, seconds, amplitude) in [
+            (0.0, 0.0, 0.0, 2.0, 0.03),
+            (1.3, 40.0, 12.0, 2.0, 0.03),
+            (2.7, -50.0, -15.0, 2.0, 0.03),
+            (0.8, 500.0, 28.5, 8.0, 0.03),
+            (0.9, -50.0, 15.0, 3.0, 0.003),
         ] {
             let mut decoder = RdsDecoder::new();
             let mut differential = vec![false];
@@ -443,8 +453,13 @@ mod tests {
                 } else {
                     -1.0
                 } * if position.fract() < 0.5 { 1.0 } else { -1.0 };
-                let fm = 0.03 * sign * (2.0 * PI * (57000.0 + offset) * t + phase).cos()
-                    + 0.3 * (2.0 * PI * 1000.0 * t).sin();
+                // After 57 kHz translation, 9/105 kHz sit at +/-48 kHz.
+                // They must be rejected before the first 5:1 decimation;
+                // otherwise they alias into the much weaker RDS channel.
+                let fm = amplitude * sign * (2.0 * PI * (57000.0 + offset) * t + phase).cos()
+                    + 0.3 * (2.0 * PI * 1000.0 * t).sin()
+                    + 0.2 * (2.0 * PI * 9000.0 * t).sin()
+                    + 0.2 * (2.0 * PI * 105000.0 * t).sin();
                 decoder.process(fm as f32);
             }
             let status = decoder.status();

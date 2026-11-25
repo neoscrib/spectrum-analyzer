@@ -1,8 +1,8 @@
 //! Stereo WFM demodulation at 240 kSPS; channel selection lives in dsp_core.
-#[cfg(not(target_arch = "wasm32"))]
-use super::Downconverter;
 #[cfg(test)]
 use super::INPUT_RATE;
+#[cfg(not(target_arch = "wasm32"))]
+use super::dsp::WfmDownconverter;
 use super::rds::{RdsDecoder, RdsStatus};
 use super::{AUDIO_RATE, Fir, IF_RATE, lowpass};
 use std::f64::consts::PI;
@@ -22,7 +22,6 @@ struct Pilot {
     mean_i: f64,
     mean_q: f64,
     power: f64,
-    level: f64,
     good: usize,
     bad: usize,
     samples: usize,
@@ -41,7 +40,6 @@ impl Pilot {
             mean_i: 0.0,
             mean_q: 0.0,
             power: 0.0,
-            level: 0.0,
             good: 0,
             bad: 0,
             samples: 0,
@@ -61,10 +59,12 @@ impl Pilot {
         let norm = self.i[1] * self.i[1] + self.q[1] * self.q[1];
         self.power += SLOW * (norm - self.power);
         // Envelope is half the pilot's deviation-normalized amplitude.
-        self.level = 2.0 * self.power.max(0.0).sqrt();
-        let coherence =
-            (self.mean_i * self.mean_i + self.mean_q * self.mean_q) / self.power.max(1e-15);
-        let good = self.level > 0.025 && self.level < 0.18 && coherence > 0.8;
+        // Compare power directly. Square root is only needed by the block-rate
+        // telemetry getter, not for every 240 kHz multiplex sample.
+        let coherent_power = self.mean_i * self.mean_i + self.mean_q * self.mean_q;
+        let good = self.power > (0.025 / 2.0_f64).powi(2)
+            && self.power < (0.18 / 2.0_f64).powi(2)
+            && coherent_power > 0.8 * self.power.max(1e-15);
         if good {
             self.good = (self.good + 1).min(19_200);
             self.bad = 0;
@@ -86,7 +86,8 @@ impl Pilot {
         self.osc_i = self.osc_r * self.step_i + self.osc_i * self.step_r;
         self.osc_r = next_r;
         self.samples += 1;
-        if self.samples % 4096 == 0 {
+        if self.samples == 4096 {
+            self.samples = 0;
             let length = self.osc_r.hypot(self.osc_i);
             self.osc_r /= length;
             self.osc_i /= length;
@@ -98,7 +99,7 @@ impl Pilot {
 #[wasm_bindgen]
 pub struct WfmDecoder {
     #[cfg(not(target_arch = "wasm32"))]
-    front: Downconverter,
+    front: WfmDownconverter,
     audio: Fir,
     difference: Fir,
     pilot: Pilot,
@@ -123,12 +124,7 @@ impl WfmDecoder {
     pub fn new(_offset_hz: f64, _bandwidth_hz: f64, deemphasis_us: f64) -> WfmDecoder {
         Self {
             #[cfg(not(target_arch = "wasm32"))]
-            front: Downconverter::new(
-                _offset_hz,
-                (_bandwidth_hz.clamp(150_000.0, 220_000.0) / 2.0 - 5_000.0).max(65_000.0),
-                401,
-                10,
-            ),
+            front: WfmDownconverter::new(_offset_hz, _bandwidth_hz),
             audio: Fir::new(lowpass(161, 15_000.0, IF_RATE)),
             difference: Fir::new(lowpass(161, 15_000.0, IF_RATE)),
             pilot: Pilot::new(),
@@ -158,7 +154,7 @@ impl WfmDecoder {
         self.stereo_enabled && self.pilot.locked && self.blend > 0.95
     }
     pub fn pilot_level(&self) -> f32 {
-        self.pilot.level as f32
+        (2.0 * self.pilot.power.max(0.0).sqrt()) as f32
     }
     pub fn set_rds_enabled(&mut self, enabled: bool) {
         if enabled {
@@ -227,9 +223,10 @@ impl WfmDecoder {
             self.audio.push(fm);
             self.difference.push(fm * 2.0 * carrier);
             self.if_count += 1;
-            if self.if_count % 5 != 0 {
+            if self.if_count != 5 {
                 continue;
             }
+            self.if_count = 0;
             // Fade separation in/out over 40 ms; do not abruptly switch channels.
             let target = if self.stereo_enabled && self.pilot.locked {
                 1.0
@@ -241,7 +238,13 @@ impl WfmDecoder {
             // A phase-difference discriminator averages frequency over one IF
             // sample interval. Correct its sinc droop at 38 kHz so L-R has the
             // same gain as L+R; otherwise even a clean station leaks ~4% of L-R.
-            let difference = self.difference.value() * self.blend * 1.0424598;
+            // Keep the ring current for seamless acquisition, but a fully
+            // mono output needs no difference-channel convolution.
+            let difference = if self.blend == 0.0 {
+                0.0
+            } else {
+                self.difference.value() * self.blend * 1.0424598
+            };
             for (ch, sample) in [sum + difference, sum - difference].iter().enumerate() {
                 self.deemphasis[ch] += self.deemphasis_alpha * (*sample - self.deemphasis[ch]);
                 // Remove residual tuning DC after de-emphasis (~30 Hz high-pass).

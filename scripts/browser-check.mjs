@@ -43,6 +43,7 @@ await page.addInitScript(() => {
       const analysers = [0, 1].map((channel) => {
         const analyser = this.createAnalyser();
         analyser.fftSize = 8192;
+        analyser.smoothingTimeConstant = 0; // Observe current mono/stereo output.
         splitter.connect(analyser, channel);
         return analyser;
       });
@@ -126,10 +127,30 @@ try {
   await page.getByLabel("Audio mode", { exact: true }).selectOption("mono");
   await expect(page.getByText("Mono · forced", { exact: true })).toBeVisible();
   await expect
-    .poll(async () => Math.abs((await probe()).separationDb), {
-      timeout: 10000,
-    })
-    .toBeLessThan(3);
+    .poll(
+      async () => {
+        const audio = await probe();
+        // Mono has identical channel spectra. Its 1/2 kHz levels need not be
+        // equal: de-emphasis and FFT-bin placement both favor the lower tone.
+        return Math.abs(audio.separationDb + audio.right.separationDb);
+      },
+      {
+        timeout: 10000,
+      },
+    )
+    .toBeLessThan(1);
+  await expect
+    .poll(
+      async () => {
+        const audio = await probe();
+        return Math.max(
+          Math.abs(audio.separationDb),
+          Math.abs(audio.right.separationDb),
+        );
+      },
+      { timeout: 10000 },
+    )
+    .toBeLessThan(8); // Both test tones remain audible in both mono channels.
   await page.getByLabel("Audio mode", { exact: true }).selectOption("auto");
   await expect(
     page.getByText("Stereo · pilot locked", { exact: true }),

@@ -5,6 +5,7 @@ export const __wbg_channelizer_free: (a: number, b: number) => void;
 export const __wbg_iqchannelizer_free: (a: number, b: number) => void;
 export const channelizer_new: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const channelizer_process: (a: number, b: number, c: number) => [number, number];
+export const channelizer_wfm: (a: number, b: number) => [number, number, number];
 export const iqchannelizer_new: (a: number, b: number) => number;
 export const iqchannelizer_process: (a: number, b: number, c: number) => [number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;

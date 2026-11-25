@@ -15,10 +15,16 @@ const results = [];
 try {
   for (const [kind, noise] of [
     ["wfm", false],
+    ["wfm", true],
     ["am", false],
     ["nfm", true],
     ["nfm", false],
   ]) {
+    if (
+      process.env.LIVE_DSP_DECODERS &&
+      !process.env.LIVE_DSP_DECODERS.split(",").includes(kind)
+    )
+      continue;
     const context = await browser.newContext({
       serviceWorkers: "block",
       viewport: { width: 1200, height: 900 },
@@ -36,12 +42,28 @@ try {
     );
     if (process.env.DSP_BASELINE_DIR)
       await context.route(
-        /\/src\/wasm\/(dsp_core|wfm|am|nfm)_bg\.wasm/,
+        /\/src\/wasm\/(dsp_core|wfm|am|nfm)(?:_bg\.wasm|\.js)(?:\?|$)/,
         async (route) => {
           const file = new URL(route.request().url()).pathname.split("/").pop();
+          const isJs = file.split("?")[0].endsWith(".js");
+          let body = await readFile(
+            resolve(process.env.DSP_BASELINE_DIR, file.split("?")[0]),
+          );
+          if (isJs && file.startsWith("dsp_core")) {
+            // Older baselines expose the original single-stage channelizer.
+            // Adapt only the new factory entry point, using that old filter.
+            body = Buffer.concat([
+              body,
+              Buffer.from(`
+              if (!Channelizer.wfm) Channelizer.wfm = (offset, bandwidth) =>
+                new Channelizer(offset, Math.max(65000,
+                  Math.min(220000, Math.max(150000, bandwidth)) / 2 - 5000), 401, 10);
+            `),
+            ]);
+          }
           await route.fulfill({
-            contentType: "application/wasm",
-            body: await readFile(resolve(process.env.DSP_BASELINE_DIR, file)),
+            contentType: isJs ? "text/javascript" : "application/wasm",
+            body,
           });
         },
       );
@@ -147,8 +169,20 @@ try {
     while (Date.now() - start < duration * 1000) {
       await new Promise((resolve) => setTimeout(resolve, 400));
       const alerts = await page.getByRole("alert").allTextContents();
-      if (alerts.some((t) => /could not keep up|error|failed/i.test(t)))
-        throw Error(`${kind}: ${alerts.join("; ")}`);
+      if (alerts.some((t) => /could not keep up|error|failed/i.test(t))) {
+        const diagnostic = await page.evaluate(() => ({
+          frames: window.__live.frames,
+          rfSeconds: window.__live.samples / 2400000,
+          meanCpuPercent:
+            window.__live.cpu.reduce((s, v) => s + v, 0) /
+            window.__live.cpu.length,
+          peakCpuPercent: Math.max(...window.__live.cpu),
+          maximumBacklog: window.__live.maximumBacklog,
+        }));
+        throw Error(
+          `${kind} (${noise ? "static" : "tone"}): ${alerts.join("; ")} ${JSON.stringify(diagnostic)}`,
+        );
+      }
       const backlog = Number.parseInt(
         await page
           .getByText("Worker backlog", { exact: true })
@@ -172,9 +206,22 @@ try {
         audioRms: Math.sqrt(x.reduce((s, v) => s + v * v, 0) / x.length),
       };
     });
+    const measurement = {
+      kind,
+      noise,
+      cpuThrottle: Number(process.env.CPU_THROTTLE || 4),
+      wallSeconds: (Date.now() - start) / 1000,
+      rfSeconds: metrics.samples / 2400000,
+      maximumBacklog: metrics.maximumBacklog,
+      meanCpuPercent:
+        metrics.cpu.reduce((s, v) => s + v, 0) / metrics.cpu.length,
+      audioRms: metrics.audioRms,
+      errors,
+    };
+    console.log("Continuously paced live DSP:", measurement);
     assert(
       metrics.samples / 2400000 > duration - 2,
-      `${kind}: continuously paced input fell behind`,
+      `${kind}: continuously paced input fell behind (${metrics.samples / 2400000} RF seconds in ${duration} seconds)`,
     );
     assert(metrics.audioBlocks > 100, `${kind}: no continuing decoded audio`);
     assert(
@@ -182,23 +229,13 @@ try {
       `${kind}: audio did not reach the worklet`,
     );
     assert.deepEqual(errors, []);
-    results.push({
-      kind,
-      noise,
-      cpuThrottle: Number(process.env.CPU_THROTTLE || 4),
-      rfSeconds: metrics.samples / 2400000,
-      maximumBacklog: metrics.maximumBacklog,
-      meanCpuPercent:
-        metrics.cpu.reduce((s, v) => s + v, 0) / metrics.cpu.length,
-      audioRms: metrics.audioRms,
-      errors,
-    });
+    results.push(measurement);
     await page
       .getByRole("button", { name: "Stop receiver", exact: true })
       .click();
     await context.close();
-    console.log("Continuously paced live DSP:", results.at(-1));
   }
+  assert(results.length > 0, "No matching LIVE_DSP_DECODERS");
   await mkdir("artifacts", { recursive: true });
   await writeFile(
     "artifacts/live-dsp-results.json",

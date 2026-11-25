@@ -206,6 +206,7 @@ export default function App() {
   multiplexVisible.current = multiplexEnabled;
   const multiplex = useRef<MultiplexSpectrum | null>(null);
   const [rds, setRds] = useState<RdsStatus | null>(null);
+  const pendingRds = useRef<RdsStatus | null>(null);
   const [rdsTest, setRdsTest] = useState(false);
   const [metrics, setMetrics] = useState(emptyMetrics);
   const [wwv, setWwv] = useState<WwvStatus | null>(null);
@@ -269,7 +270,7 @@ export default function App() {
           player.push(event.samples, event.armer);
         if (event.type === "telemetry" && event.protocol === "wfm") {
           stereo = event.stereo;
-          if (event.rds) setRds(event.rds);
+          if (event.rds) pendingRds.current = event.rds;
         }
         if (event.type === "telemetry" && event.protocol === "rtl433") {
           rtlLatest.current = event.status;
@@ -327,6 +328,12 @@ export default function App() {
           stereo,
         });
         flushRtl();
+        // Batch RDS with monitor telemetry instead of repainting the whole
+        // app again between monitor updates, especially on slower phones.
+        if (pendingRds.current) {
+          setRds(pendingRds.current);
+          pendingRds.current = null;
+        }
         if (lastWwv.current) setWwv(lastWwv.current);
         if (ookLatest.current) setOokStatus(ookLatest.current);
         if (ookPending.current.length) {
@@ -491,6 +498,7 @@ export default function App() {
       audio.current!.clear();
       setMetrics((m) => ({ ...m, stereo: false }));
       multiplex.current = null;
+      pendingRds.current = null;
       setRds(null);
       setWwv(null);
       lastWwv.current = null;
@@ -550,6 +558,7 @@ export default function App() {
     setWwv(null);
     lastWwv.current = null;
     setWwvOrigin(kind);
+    pendingRds.current = null;
     setRds(null);
     setRdsTest(kind === "test");
     multiplex.current = null;
@@ -1486,6 +1495,7 @@ export default function App() {
                       onChange={(e) => {
                         const enabled = e.target.checked;
                         radio.current!.setWfmRds(enabled);
+                        pendingRds.current = null;
                         setRds(null);
                         setSettings((previous) => ({
                           ...previous,

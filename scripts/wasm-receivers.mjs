@@ -33,19 +33,15 @@ export async function receiverModule(name) {
       constructor(...args) {
         super(...args);
         const [offset, bandwidth] = args;
-        const cutoff =
+        this.front =
           name === "wfm"
-            ? Math.max(
-                65000,
-                Math.min(220000, Math.max(150000, bandwidth)) / 2 - 5000,
-              )
-            : 90000;
-        this.front = new core.Channelizer(
-          offset,
-          cutoff,
-          name === "wfm" ? 401 : name === "ook" ? 161 : 121,
-          10,
-        );
+            ? core.Channelizer.wfm(offset, bandwidth)
+            : new core.Channelizer(
+                offset,
+                90000,
+                name === "ook" ? 161 : 121,
+                10,
+              );
       }
       process(iq) {
         return super.process_baseband(this.front.process(iq));

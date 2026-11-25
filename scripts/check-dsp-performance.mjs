@@ -74,12 +74,14 @@ async function benchmark() {
       const front =
         kind === "nfm"
           ? null
-          : new native.dsp_core.Channelizer(
-              187500,
-              kind === "wfm" ? 95000 : 90000,
-              kind === "wfm" ? 401 : 121,
-              10,
-            );
+          : kind === "wfm" && native.dsp_core.Channelizer.wfm
+            ? native.dsp_core.Channelizer.wfm(187500, 200000)
+            : new native.dsp_core.Channelizer(
+                187500,
+                kind === "wfm" ? 95000 : 90000,
+                kind === "wfm" ? 401 : 121,
+                10,
+              );
       const receivers =
         kind === "wfm"
           ? [new native.wfm.WfmDecoder(187500, 200000, 75)]
@@ -104,19 +106,24 @@ async function benchmark() {
         }
       };
       for (let n = 0; n < 60; n++) process(); // Warm WASM and active CTCSS/DCS analysis.
-      const before = performance.now();
-      for (let n = 0; n < 150; n++) process();
+      // Median of five rounds reduces JIT/scheduling noise in small CPU gains.
+      const rounds = [];
+      for (let round = 0; round < 5; round++) {
+        const before = performance.now();
+        for (let n = 0; n < 150; n++) process();
+        rounds.push(
+          (performance.now() - before) / (((150 * 65536) / 2400000) * 10),
+        );
+      }
+      rounds.sort((a, b) => a - b);
       results.push({
         directory,
         kind,
         noise,
         channels,
-        cpuPercent: Number(
-          (
-            (performance.now() - before) /
-            (((150 * 65536) / 2400000) * 10)
-          ).toFixed(2),
-        ),
+        cpuPercent: Number(rounds[2].toFixed(2)),
+        minCpuPercent: Number(rounds[0].toFixed(2)),
+        maxCpuPercent: Number(rounds[4].toFixed(2)),
       });
       receivers.forEach((d) => d.free());
       front?.free();

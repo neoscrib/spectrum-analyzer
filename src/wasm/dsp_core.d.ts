@@ -12,6 +12,10 @@ export class Channelizer {
      * CU8 2.4 MSPS -> owned interleaved normalized F32 I/Q at 2.4M / decimation.
      */
     process(iq: Uint8Array | number[]): Float32Array;
+    /**
+     * Staged broadcast-FM channel selection, retaining 240 kSPS output.
+     */
+    static wfm(offset: number, bandwidth: number): Channelizer;
 }
 
 export class IqChannelizer {
@@ -32,6 +36,7 @@ export interface InitOutput {
     readonly __wbg_iqchannelizer_free: (a: number, b: number) => void;
     readonly channelizer_new: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly channelizer_process: (a: number, b: number, c: number) => [number, number];
+    readonly channelizer_wfm: (a: number, b: number) => [number, number, number];
     readonly iqchannelizer_new: (a: number, b: number) => number;
     readonly iqchannelizer_process: (a: number, b: number, c: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

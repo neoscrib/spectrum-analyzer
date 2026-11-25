@@ -130,6 +130,12 @@ try {
   await expect(
     page.getByLabel("Automatically adjust frequency bias", { exact: true }),
   ).toBeChecked();
+  await expect(page.getByTestId("meteor-bias-confidence")).toHaveText(
+    "Automatic · waiting for Doppler",
+  );
+  await expect(page.locator(".meteor-bias details")).not.toHaveAttribute(
+    "open",
+  );
   await page.getByText("Replay recorded I/Q", { exact: true }).click();
   await page
     .getByLabel("Meteor replay metadata", { exact: true })
@@ -141,6 +147,7 @@ try {
     .getByLabel("Meteor IQ recording", { exact: true })
     .setInputFiles(file);
   // One click from an idle file selection starts measurement and normal replay.
+  await page.getByText("Manual bias controls", { exact: true }).click();
   await page
     .getByRole("button", { name: "Estimate frequency bias", exact: true })
     .click();
@@ -198,9 +205,31 @@ try {
   );
   const automatic = await page.evaluate(() => window.__afc.bias);
   assert(automatic.automatic);
+  assert(
+    automatic.enabled,
+    "Continuous measurement must remain active after correction",
+  );
   assert(automatic.adjustments > 0);
   assert(Math.abs(automatic.appliedHz + 2607) < 20);
   assert.equal(automatic.configuredHz, 0);
+  const automaticHistory = await page.evaluate(() => window.__afcHistory);
+  const firstCorrection = automaticHistory.find(
+    (b) => b.automatic && b.adjustments > 0,
+  );
+  assert(firstCorrection);
+  assert(
+    automatic.windows > firstCorrection.windows,
+    "Must keep measuring after the initial correction",
+  );
+  await expect(page.locator(".meteor-bias details")).not.toHaveAttribute(
+    "open",
+  );
+  await expect(page.getByTestId("meteor-bias-confidence")).toHaveText(
+    "Automatic · ready",
+  );
+  await expect(page.getByTestId("meteor-bias-adjustments")).toHaveText(
+    String(automatic.adjustments),
+  );
   assert.equal(
     await page.evaluate(
       () =>
@@ -262,9 +291,8 @@ try {
   assert.equal(await page.evaluate(() => window.__afc.bias.hz), null);
   assert.equal(await page.evaluate(() => window.__afc.bias.adjustments), 0);
   assert.deepEqual(page.workers(), workers);
-  await page
-    .getByRole("button", { name: "Stop estimating", exact: true })
-    .click();
+  // Switch directly from a running one-shot. Disabling automatic later must
+  // not revive the old one-shot or leave the tap doing unnecessary FFT work.
   const beforeAuto = await page.evaluate(() => window.__afc.samples);
   await page
     .getByLabel("Automatically adjust frequency bias", { exact: true })
@@ -272,6 +300,12 @@ try {
   await expect
     .poll(() => page.evaluate(() => window.__afc.bias.automatic))
     .toBe(true);
+  await expect(page.getByTestId("meteor-bias-confidence")).toHaveText(
+    "Automatic · acquiring",
+  );
+  await expect(page.locator(".meteor-bias details")).not.toHaveAttribute(
+    "open",
+  );
   await expect
     .poll(() => page.evaluate(() => window.__afc.bias.windows), {
       timeout: 15000,
@@ -295,6 +329,8 @@ try {
     offline: Boolean(process.env.CHECK_OFFLINE),
     measured,
     automatic,
+    continuousAfterCorrection: true,
+    automaticFirstControls: true,
     liveHotControls: true,
     noiseRejected: true,
     errors,

@@ -8,6 +8,7 @@ import type {
   ChannelImage,
   IqFormat,
 } from "../meteor/model";
+import { defaultLiveDoppler } from "../meteor/live-doppler";
 import { referenceSettings } from "../meteor/model";
 import type { ReplayOptions } from "../meteor/types";
 import { DEFAULT_REPLAY, validateReplay } from "../meteor/replay";
@@ -72,7 +73,7 @@ export function MeteorPanel({
     setFrequency(String(settings.channel / 1e6));
   }, [settings.meteor, settings.center, settings.channel]);
   const patch = (p: Partial<MeteorOptions>) =>
-    setDraft((d) => ({ ...d, ...p }));
+    setDraft((d) => defaultLiveDoppler({ ...d, ...p }));
   const replaying = source === "replay";
   const selected = images.find((i) => i.apid === channel) ?? images[0];
   function biasCommand(command: MeteorBiasCommand) {
@@ -129,15 +130,17 @@ export function MeteorPanel({
   }
   async function applyOptions(frequency?: number) {
     try {
-      if (draft.doppler) {
-        const sat = parseTle(draft.tle, draft.satellite);
+      const next = defaultLiveDoppler(draft);
+      setDraft(next);
+      if (next.doppler) {
+        const sat = parseTle(next.tle, next.satellite);
         if (Math.abs(tleAgeDays(sat)) > 14)
           throw Error(
             "Refresh Meteor orbital elements before enabling live Doppler (TLE older than 14 days).",
           );
       }
       setError("");
-      await onApply(draft, frequency);
+      await onApply(next, frequency);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -199,6 +202,9 @@ export function MeteorPanel({
       });
       const problem = validateSettings(r) || validateReplay(options, r);
       if (problem) throw Error(problem);
+      // Choosing the manual action explicitly requests a one-shot replay,
+      // independently of the continuous replay default.
+      if (estimateBias) setOptions((o) => ({ ...o, autoBias: false }));
       setError("");
       await onReplay({
         file,
@@ -206,7 +212,7 @@ export function MeteorPanel({
         settings: s,
         options: {
           ...options,
-          ...(estimateBias ? { estimateBias: true } : {}),
+          ...(estimateBias ? { estimateBias: true, autoBias: false } : {}),
         },
       });
     } catch (e) {
@@ -440,7 +446,12 @@ export function MeteorPanel({
             <input
               type="checkbox"
               checked={draft.doppler}
-              onChange={(e) => patch({ doppler: e.target.checked })}
+              onChange={(e) =>
+                patch({
+                  doppler: e.target.checked,
+                  dopplerPreference: e.target.checked ? "on" : "off",
+                })
+              }
             />
             Live orbital Doppler correction
           </label>
@@ -488,8 +499,10 @@ export function MeteorPanel({
         <p className="caption">
           Verify the downlink and mode for your pass. Carrier tracking alone
           does not confirm LRPT; frame lock requires an attached sync marker and
-          valid Reed–Solomon result. Doppler is off until configured with your
-          observer location and fresh TLE.
+          valid Reed–Solomon result. A matching TLE no more than 14 days old
+          enables live Doppler by default when settings are applied. An explicit
+          off choice is remembered. Verify your observer location before
+          reception.
         </p>
         {prediction && prediction.passes.length > 0 && (
           <MeteorPassList prediction={prediction} />
@@ -668,7 +681,7 @@ export function MeteorPanel({
                 setOptions((o) => ({ ...o, autoBias: e.target.checked }))
               }
             />
-            Automatically adjust replay bias
+            Continuously estimate and correct replay bias
           </label>
           <button
             className="button meteor-wide"

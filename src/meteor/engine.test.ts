@@ -156,6 +156,53 @@ it("rejects unsupported rates, out-of-band recordings and invalid float input", 
   ).toThrow(/non-finite/);
   plugin.dispose();
 });
+it("switches from a one-shot to continuous estimation, then stops all measurement when automatic is disabled", async () => {
+  const native = await createMeteor({ wasmBinary });
+  const plugin = meteorEngine(
+    {
+      ...settings,
+      meteor: {
+        ...settings.meteor,
+        tle: "METEOR-M2 4\n1 59051U 24039A   26323.63845458  .00000023  00000+0  30271-4 0  9998\n2 59051  98.7252 281.1433 0008139  81.1004 279.1095 14.22443947141360",
+      },
+    },
+    native,
+    {
+      sampleRate: 240000,
+      format: "cu8",
+      replay: {
+        startSeconds: 0,
+        durationSeconds: null,
+        frequencyOffsetHz: -2607,
+        autoBias: false,
+        historicalDoppler: true,
+        recordingStartUtc: "2026-11-25T15:38:28.255Z",
+        estimateBias: true,
+      },
+    },
+  );
+  const c = collector(),
+    readStatus = () => {
+      c.take(plugin.process(new Uint8Array(), 0));
+      return c.status()!.bias!;
+    };
+  try {
+    expect(readStatus()).toMatchObject({ enabled: true, automatic: false });
+    expect(native._browser_bias_iq()).toBeGreaterThan(0);
+    plugin.setMeteorBias!({ action: "auto", enabled: true });
+    expect(readStatus()).toMatchObject({ enabled: true, automatic: true });
+    plugin.setMeteorBias!({ action: "auto", enabled: false });
+    expect(readStatus()).toMatchObject({
+      enabled: false,
+      automatic: false,
+      appliedHz: -2607,
+      configuredHz: -2607,
+    });
+    expect(native._browser_bias_iq()).toBe(0);
+  } finally {
+    plugin.dispose();
+  }
+});
 const privateEnabled = process.env.METEOR_PRIVATE_TESTS === "1";
 it.skipIf(!privateEnabled)(
   "matches the original modern M2-3 real pass recovery, including historical Doppler",

@@ -1,5 +1,6 @@
 export const SAMPLE_RATE = 2_400_000;
 import { adsbDefaults, validateAdsb, type AdsbOptions } from "./adsb/model";
+import { defaultLiveDoppler } from "./meteor/live-doppler";
 import { sameDefaults, type SameOptions } from "./same/model";
 export const AUDIO_RATE = 48_000;
 export const FFT_SIZE = 8192;
@@ -186,7 +187,10 @@ export function readSettings(): Settings {
       meteor.autoBias = true;
       meteor.autoBiasDefaultVersion = 1;
     }
-    saved.meteor = meteor;
+    meteor.dopplerPreference =
+      saved.meteor?.dopplerPreference ??
+      (saved.meteor?.doppler ? "on" : "auto");
+    saved.meteor = defaultLiveDoppler(meteor);
     saved.same = { ...sameDefaults, ...saved.same };
     saved.adsb = { ...adsbDefaults, ...saved.adsb };
     validateSettings(saved);

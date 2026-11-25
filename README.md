@@ -330,6 +330,8 @@ Select **Meteor-M · LRPT satellite** in **Decode as…**. It uses the existing 
 
 See [Meteor usage, modes, architecture and validation](docs/meteor.md). Public legacy and local modern recordings match the reference’s exact frame/packet counts and image hashes. Fresh over-the-air reception in this integrated app remains to be verified. Interleaved 80k is retained as experimental; the reference provides raw grayscale channels, not registered RGB composites or calibrated/georeferenced products.
 
+Live Meteor Doppler correction now defaults on when a valid, matching TLE no more than 14 days old is available. Refresh or paste the elements, verify your observer location, and apply Meteor settings. Explicit on/off choices persist; imported historical capture and replay settings retain their original behavior. Existing saved preferences using the old off default adopt automatic correction when usable TLE data is present.
+
 ## Linux USB access
 
 If the DVB TV driver owns the USB interface, close SDR software, then run:

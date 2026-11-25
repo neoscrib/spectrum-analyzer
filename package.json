@@ -46,7 +46,8 @@
     "test:browser:same": "node scripts/browser-same-check.mjs",
     "build:adsb": "bash scripts/build-adsb.sh",
     "test:adsb": "node scripts/check-adsb.mjs",
-    "test:browser:adsb": "node scripts/browser-adsb-check.mjs"
+    "test:browser:adsb": "node scripts/browser-adsb-check.mjs",
+    "test:browser:meteor-doppler": "node scripts/browser-meteor-doppler-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",

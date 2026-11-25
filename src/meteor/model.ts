@@ -21,6 +21,7 @@ export type MeteorOptions = Pick<
   | "minElevation"
   | "tle"
 > & {
+  dopplerPreference?: "auto" | "on" | "off";
   reacquireSeconds: number;
   autoBias?: boolean;
   autoBiasDefaultVersion?: 1;
@@ -40,6 +41,7 @@ export const meteorDefaults: MeteorOptions = {
   nrzm: true,
   interleaved: false,
   doppler: false,
+  dopplerPreference: "auto",
   frequencyBiasHz: 0,
   latitude: DEFAULT_SETTINGS.latitude,
   longitude: DEFAULT_SETTINGS.longitude,
@@ -66,6 +68,11 @@ export function referenceSettings(
   };
 }
 export function validateMeteor(options: MeteorOptions): void {
+  if (
+    options.dopplerPreference !== undefined &&
+    !["auto", "on", "off"].includes(options.dopplerPreference)
+  )
+    throw Error("Choose a valid live Doppler preference.");
   if (options.autoBias !== undefined && typeof options.autoBias !== "boolean")
     throw Error("Choose whether Meteor bias correction is automatic.");
   const problem = validateReference({ ...DEFAULT_SETTINGS, ...options });

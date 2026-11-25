@@ -1,3 +1,4 @@
+import { defaultLiveDoppler } from "./meteor/live-doppler";
 import type { AdsbBatch } from "./adsb/model";
 const AdsbPanel = lazy(() =>
   import("./components/AdsbPanel").then((m) => ({ default: m.AdsbPanel })),
@@ -504,6 +505,8 @@ export default function App() {
         throw Error(
           "Stop replay before changing receiver or decoder settings.",
         );
+      if (next.decoder === "meteor")
+        next = { ...next, meteor: defaultLiveDoppler(next.meteor) };
       validateSettings(next);
       setReplayView(null);
       resetMeteor();
@@ -599,7 +602,7 @@ export default function App() {
     setOokStatus(null);
     setOokTest(kind === "test");
     // A known source starts with known tuning; receiver settings remain otherwise intact.
-    const current =
+    let current =
       override ??
       (kind === "live"
         ? {
@@ -608,6 +611,8 @@ export default function App() {
             ppm: Number(rfDraft.ppm),
           }
         : settingsRef.current);
+    if (current.decoder === "meteor")
+      current = { ...current, meteor: defaultLiveDoppler(current.meteor) };
     const testProfile =
       current.decoder === "adsb"
         ? {

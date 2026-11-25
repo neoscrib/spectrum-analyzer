@@ -34,6 +34,7 @@ export function importMeteorProfile(
       nrzm: r.nrzm,
       interleaved: r.interleaved,
       doppler: r.doppler,
+      dopplerPreference: r.doppler ? "on" : "off",
       frequencyBiasHz: r.frequencyBiasHz,
       carrierLimitHz: r.carrierLimitHz,
       latitude: r.latitude,
@@ -95,6 +96,7 @@ export function importMeteorProfile(
           meteor: {
             ...current.meteor,
             ...meteor,
+            dopplerPreference: meteor.doppler ? "on" : "off",
             autoBias: meteor.autoBias ?? true,
           },
         }

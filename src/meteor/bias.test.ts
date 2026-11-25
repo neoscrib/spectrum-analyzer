@@ -9,7 +9,10 @@ import {
 import { BiasEstimator, automaticBiasStep } from "./bias";
 const rate = 240000,
   size = 65536;
-function source(kind: "qpsk" | "oqpsk" | "noise" | "tone", offset: number) {
+function source(
+  kind: "qpsk" | "oqpsk" | "noise" | "tone",
+  offset: number | ((seconds: number) => number),
+) {
   let phase = 0,
     seed = 1234567,
     sample = 0;
@@ -42,7 +45,8 @@ function source(kind: "qpsk" | "oqpsk" | "noise" | "tone", offset: number) {
         s = Math.sin(phase);
       iq[2 * n] = i * c - q * s;
       iq[2 * n + 1] = i * s + q * c;
-      phase += (2 * Math.PI * offset) / rate;
+      const hz = typeof offset === "number" ? offset : offset(sample / rate);
+      phase += (2 * Math.PI * hz) / rate;
       if (phase > Math.PI) phase -= 2 * Math.PI;
       if (phase < -Math.PI) phase += 2 * Math.PI;
     }
@@ -78,6 +82,53 @@ it.each(["noise", "tone"] as const)(
     expect(result.confidence).not.toBe("high");
     expect(result.hz).toBeNull();
     expect(automaticBiasStep(result, 0, false)).toBeNull();
+  },
+  20000,
+);
+it.each(["qpsk", "oqpsk"] as const)(
+  "continues correcting slow %s oscillator drift after acquisition, holds through a fade, and resumes",
+  (kind) => {
+    const est = new BiasEstimator(rate),
+      bias = (seconds: number) => -2607 + 3 * seconds;
+    let applied = 0;
+    const gen = source(kind, (seconds) => bias(seconds) - applied),
+      noise = source("noise", 0),
+      corrections: { seconds: number; hz: number }[] = [];
+    let lastWindows = 0,
+      held = 0;
+    // Forty-nine seconds of RF: acquire, drift, fade for six seconds, reacquire.
+    for (let n = 0; n < 180; n++) {
+      const seconds = ((n + 1) * size) / rate,
+        faded = n >= 100 && n < 122;
+      // Advance the modulated source through the fade so its oscillator clock
+      // stays aligned with RF time when reception returns.
+      const iq = gen();
+      if (n === 100) held = applied;
+      if (est.feed(faded ? noise() : iq, applied, seconds)) {
+        const estimate = est.snapshot(seconds);
+        expect(estimate.windows).toBeGreaterThan(lastWindows);
+        lastWindows = estimate.windows;
+        const next = automaticBiasStep(estimate, applied, seconds > 10);
+        if (next !== null) {
+          if (seconds > 10)
+            expect(Math.abs(next - applied)).toBeLessThanOrEqual(100);
+          corrections.push({ seconds, hz: next });
+          applied = next;
+        }
+      }
+      if (n === 121) {
+        expect(applied).toBe(held);
+        expect(est.snapshot(seconds).fresh).toBe(false);
+      }
+    }
+    expect(corrections.length).toBeGreaterThanOrEqual(4);
+    expect(
+      Math.abs(corrections[0].hz - bias(corrections[0].seconds)),
+    ).toBeLessThan(20);
+    expect(corrections.some((c) => c.seconds > 35)).toBe(true);
+    expect(Math.abs(applied - bias((180 * size) / rate))).toBeLessThan(35);
+    expect(est.snapshot((180 * size) / rate).fresh).toBe(true);
+    expect(lastWindows).toBeGreaterThan(18);
   },
   20000,
 );

@@ -76,7 +76,7 @@ export function meteorEngine(
     (input.replay
       ? (input.replay.autoBias ?? true)
       : (s.meteor.autoBias ?? true));
-  let measuring = Boolean(input.replay?.estimateBias),
+  let measuring = !automatic && Boolean(input.replay?.estimateBias),
     adjustments = 0,
     estimator: BiasEstimator | undefined;
   const enableEstimator = () => {
@@ -121,7 +121,7 @@ export function meteorEngine(
     switch (command.action) {
       case "estimate":
         biasNotice = "";
-        measuring = command.enabled;
+        measuring = command.enabled && !automatic;
         estimateStarted = samples / input.sampleRate;
         if (measuring)
           estimator = new BiasEstimator(native._browser_bias_rate());
@@ -129,6 +129,9 @@ export function meteorEngine(
         break;
       case "auto":
         biasNotice = "";
+        // Automatic mode replaces a one-shot request; disabling it freezes
+        // tuning and stops measurement until explicitly requested again.
+        measuring = false;
         automatic = command.enabled && dopplerRemoved;
         if (automatic)
           estimator = new BiasEstimator(native._browser_bias_rate());

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ppmIq, demoFrames } from "../src/adsb/fixtures.ts";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,6 +7,11 @@ import { pathToFileURL } from "node:url";
 // Periodic fixtures can be replayed at a fixed input rate without generating RF
 // on the browser's main thread or waiting for the decoder to request samples.
 export function performanceIq(kind, noise = false) {
+  if (kind === "adsb")
+    return ppmIq(
+      65536,
+      demoFrames().map((hex, n) => ({ hex, start: 500 + n * 1200 + 0.37 })),
+    );
   const count = 65536,
     rate = 2400000,
     iq = new Uint8Array(count * 2);

@@ -133,7 +133,7 @@ try {
       );
     return (await cache.keys()).map((request) => new URL(request.url).pathname);
   });
-  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 10);
+  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 11);
   assert(cached.some((path) => /same_bg.*\.wasm$/.test(path)));
   assert(cached.includes("/audio-worklet.js"));
   assert(cached.some((path) => path.includes("capture.worker")));
@@ -168,6 +168,7 @@ try {
   assert(await page.evaluate(() => !!navigator.usb));
   const decoded = [];
   for (const decoder of [
+    "adsb",
     "meteor",
     "rtl433",
     "armer",
@@ -189,6 +190,7 @@ try {
         () =>
           page.evaluate((kind) => {
             return window.__offlineEvents?.some((event) => {
+              if (kind === "adsb") return event.batch?.stats.valid > 0;
               if (kind === "am")
                 return event.type === "audio" && event.samples > 0;
               if (event.protocol !== kind) return false;

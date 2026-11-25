@@ -14,6 +14,7 @@ const browser = await chromium.launch({
 const results = [];
 try {
   for (const [kind, noise] of [
+    ["adsb", false],
     ["wfm", false],
     ["wfm", true],
     ["am", false],
@@ -29,6 +30,7 @@ try {
       serviceWorkers: "block",
       viewport: { width: 1200, height: 900 },
     });
+    await context.route("https://tile.openstreetmap.org/**", (r) => r.abort());
     let providerIntercepted = false;
     await context.route(
       "**/node_modules/.vite/deps/@jtarrio_webrtlsdr_rtlsdr__js.js*",
@@ -71,14 +73,27 @@ try {
       ({ encoded, kind, sameEnabled }) => {
         localStorage.setItem("spectrum-show-rf-plots", "false");
         const center =
-          kind === "wfm" ? 100000000 : kind === "am" ? 120000000 : 462400000;
+          kind === "adsb"
+            ? 1090000000
+            : kind === "wfm"
+              ? 100000000
+              : kind === "am"
+                ? 120000000
+                : 462400000;
         localStorage.setItem(
           "spectrum-settings",
           JSON.stringify({
             decoder: kind,
             center,
-            channel: center + 187500,
-            bandwidth: kind === "wfm" ? 200000 : kind === "am" ? 10000 : 12500,
+            channel: kind === "adsb" ? center : center + 187500,
+            bandwidth:
+              kind === "adsb"
+                ? 2000000
+                : kind === "wfm"
+                  ? 200000
+                  : kind === "am"
+                    ? 10000
+                    : 12500,
             squelch: null,
             same: { enabled: sameEnabled, attention: true },
           }),
@@ -111,6 +126,8 @@ try {
           cpu: [],
           errors: [],
           audioBlocks: 0,
+          adsbFrames: 0,
+          adsbAircraft: 0,
         };
         const Native = window.Worker;
         window.Worker = class extends Native {
@@ -118,6 +135,11 @@ try {
             super(...args);
             this.addEventListener("message", ({ data }) => {
               if (data.type !== "processed") return;
+              for (const e of data.events)
+                if (e.type === "telemetry" && e.protocol === "adsb") {
+                  window.__live.adsbFrames = e.batch.stats.valid;
+                  window.__live.adsbAircraft = e.batch.aircraft.length;
+                }
               window.__live.frames++;
               window.__live.samples += data.samples;
               window.__live.cpu.push(
@@ -162,10 +184,19 @@ try {
     await page
       .getByRole("button", { name: "Connect RTL-SDR", exact: true })
       .click();
-    await expect(
-      page.getByRole("button", { name: "Play audio", exact: true }),
-    ).toBeEnabled();
-    await page.getByRole("button", { name: "Play audio", exact: true }).click();
+    if (kind === "adsb") {
+      await page.getByLabel("OpenStreetMap tiles", { exact: true }).uncheck();
+      await expect(page.getByTestId("adsb-aircraft")).toHaveCount(6, {
+        timeout: 20000,
+      });
+    } else {
+      await expect(
+        page.getByRole("button", { name: "Play audio", exact: true }),
+      ).toBeEnabled();
+      await page
+        .getByRole("button", { name: "Play audio", exact: true })
+        .click();
+    }
     const duration = Number(process.env.LIVE_DSP_SECONDS || 12);
     const start = Date.now();
     while (Date.now() - start < duration * 1000) {
@@ -219,6 +250,8 @@ try {
       meanCpuPercent:
         metrics.cpu.reduce((s, v) => s + v, 0) / metrics.cpu.length,
       audioRms: metrics.audioRms,
+      adsbFrames: metrics.adsbFrames,
+      adsbAircraft: metrics.adsbAircraft,
       errors,
     };
     console.log("Continuously paced live DSP:", measurement);
@@ -226,9 +259,17 @@ try {
       metrics.samples / 2400000 > duration - 2,
       `${kind}: continuously paced input fell behind (${metrics.samples / 2400000} RF seconds in ${duration} seconds)`,
     );
-    assert(metrics.audioBlocks > 100, `${kind}: no continuing decoded audio`);
+    if (kind !== "adsb")
+      assert(metrics.audioBlocks > 100, `${kind}: no continuing decoded audio`);
+    else {
+      assert(
+        metrics.adsbFrames > duration * 500,
+        "ADS-B traffic did not keep decoding",
+      );
+      assert.equal(metrics.adsbAircraft, 6);
+    }
     assert(
-      metrics.audioRms > 0.00001,
+      kind === "adsb" || metrics.audioRms > 0.00001,
       `${kind}: audio did not reach the worklet`,
     );
     assert.deepEqual(errors, []);

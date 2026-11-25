@@ -363,14 +363,14 @@ export class RadioSession {
       throw Error("Stop the current source before replaying IQ.");
     if (
       settings.decoder !== "meteor" &&
-      !["am", "nfm", "wfm"].includes(settings.decoder)
+      !["am", "nfm", "wfm", "adsb"].includes(settings.decoder)
     )
-      throw Error("Select Meteor-M, AM, NFM or WFM for IQ replay.");
+      throw Error("Select Meteor-M, AM, NFM, WFM or ADS-B for IQ replay.");
     if (
       settings.decoder !== "meteor" &&
       (source.format !== "cu8" || source.sampleRate !== SAMPLE_RATE)
     )
-      throw Error("Analog IQ replay requires CU8 at 2.4 MSPS.");
+      throw Error("This decoder's IQ replay requires CU8 at 2.4 MSPS.");
     const range = replayRange(source, options);
     try {
       await this.init(settings, null, {

@@ -8,6 +8,8 @@ export async function createTestSource(
   kind: Settings["decoder"],
 ): Promise<TestSource> {
   switch (kind) {
+    case "adsb":
+      return new (await import("../adsb/fixtures")).AdsbTestSignal();
     case "meteor": {
       let seed = 123456789;
       return {

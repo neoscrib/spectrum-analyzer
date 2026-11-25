@@ -9,13 +9,9 @@ import {
 import type { Settings } from "../model";
 import type { SameBatch, SameOptions, SameRecord } from "../same/model";
 import { SameHistory, matchesFilters } from "../same/history";
-import { download, type IqSource } from "../meteor/iq";
+import { download } from "../meteor/iq";
+import { inspectCu8Replay, type IqReplayRequest } from "../recording/replay";
 
-export interface AnalogReplayRequest {
-  file: File;
-  source: IqSource;
-  settings: Settings;
-}
 const verified = (r: SameRecord) =>
   ({
     single: "Single header · unconfirmed",
@@ -199,7 +195,7 @@ export function SamePanel({
   active: boolean;
   busy: boolean;
   onOptions: (options: SameOptions) => void;
-  onReplay: (request: AnalogReplayRequest) => void;
+  onReplay: (request: IqReplayRequest) => void;
 }) {
   const supported = ["am", "nfm", "wfm"].includes(settings.decoder);
   const history = useRef(new SameHistory());
@@ -340,67 +336,16 @@ export function SamePanel({
   async function replayIq() {
     if (!iqFile) return;
     try {
-      let center = settings.center,
-        referenceTime = new Date(reference + "Z").toISOString();
-      if (metaFile) {
-        if (metaFile.size > 1024 * 1024)
-          throw Error("SigMF metadata is too large.");
-        const meta: unknown = JSON.parse(await metaFile.text());
-        if (!meta || typeof meta !== "object")
-          throw Error("Invalid SigMF metadata.");
-        const global =
-          "global" in meta && typeof meta.global === "object" && meta.global
-            ? (meta.global as Record<string, unknown>)
-            : {};
-        if (
-          global["core:datatype"] !== "cu8" ||
-          global["core:sample_rate"] !== 2400000
-        )
-          throw Error("Analog replay requires CU8 at 2.4 MSPS.");
-        const captures =
-          "captures" in meta && Array.isArray(meta.captures)
-            ? (meta.captures as unknown[])
-            : [];
-        if (captures.length > 1)
-          throw Error(
-            "Analog replay currently supports a single fixed-frequency SigMF capture.",
-          );
-        const capture = captures[0];
-        if (capture && typeof capture === "object") {
-          if (
-            "core:sample_start" in capture &&
-            capture["core:sample_start"] !== 0
-          )
-            throw Error(
-              "Analog replay expects the SigMF capture to start at sample zero.",
-            );
-          if (
-            "core:frequency" in capture &&
-            typeof capture["core:frequency"] === "number"
-          )
-            center = capture["core:frequency"];
-          if (
-            "core:datetime" in capture &&
-            typeof capture["core:datetime"] === "string"
-          )
-            referenceTime = new Date(capture["core:datetime"]).toISOString();
-        }
-      }
-      if (!iqFile.size || iqFile.size % 2)
-        throw Error("CU8 recordings must contain complete I/Q pairs.");
+      const request = await inspectCu8Replay(
+        iqFile,
+        metaFile ?? undefined,
+        settings,
+        new Date(reference + "Z").toISOString(),
+      );
       onReplay({
-        file: iqFile,
-        source: {
-          format: "cu8",
-          sampleRate: 2400000,
-          offset: 0,
-          length: iqFile.size,
-          center,
-          referenceTime,
-        },
+        ...request,
         settings: {
-          ...settings,
-          center,
+          ...request.settings,
           same: { ...settings.same, enabled: true },
         },
       });

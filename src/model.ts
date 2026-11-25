@@ -1,4 +1,5 @@
 export const SAMPLE_RATE = 2_400_000;
+import { adsbDefaults, validateAdsb, type AdsbOptions } from "./adsb/model";
 import { sameDefaults, type SameOptions } from "./same/model";
 export const AUDIO_RATE = 48_000;
 export const FFT_SIZE = 8192;
@@ -17,6 +18,7 @@ import {
   type MeteorOptions,
 } from "./meteor/model";
 export interface Settings {
+  adsb: AdsbOptions;
   same: SameOptions;
   meteor: MeteorOptions;
   armerAutoCenter: boolean;
@@ -37,6 +39,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  adsb: adsbDefaults,
   same: sameDefaults,
   meteor: meteorDefaults,
   armerAutoCenter: true,
@@ -57,6 +60,7 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  validateAdsb(s.adsb);
   if (
     !s.same ||
     typeof s.same.enabled !== "boolean" ||
@@ -82,6 +86,10 @@ export function validateSettings(s: Settings): void {
     s.bandwidth > SAMPLE_RATE
   )
     throw Error("Invalid decoder channel bandwidth.");
+  if (s.decoder === "adsb" && s.channel !== 1090000000)
+    throw Error(
+      "1090ES decodes at 1090 MHz. Adjust the capture center or RF gain instead.",
+    );
   if (s.decoder !== "none" && !manifest.bandwidths.includes(s.bandwidth))
     throw Error(
       `Choose a supported ${s.decoder.toUpperCase()} channel bandwidth.`,
@@ -126,7 +134,9 @@ export function moveCenter(s: Settings, center: number): Settings {
     ...s,
     center,
     channel:
-      s.decoder === "armer" ? s.channel : center + (s.channel - s.center),
+      s.decoder === "armer" || s.decoder === "adsb"
+        ? s.channel
+        : center + (s.channel - s.center),
   };
 }
 export function clampChannel(s: Settings, channel: number): number {
@@ -178,6 +188,7 @@ export function readSettings(): Settings {
     }
     saved.meteor = meteor;
     saved.same = { ...sameDefaults, ...saved.same };
+    saved.adsb = { ...adsbDefaults, ...saved.adsb };
     validateSettings(saved);
     return saved;
   } catch {

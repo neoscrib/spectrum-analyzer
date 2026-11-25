@@ -1,4 +1,5 @@
 import type { MeteorBiasCommand } from "./meteor/bias";
+import type { AdsbBatch } from "./adsb/model";
 import type { SameBatch, SameOptions } from "./same/model";
 import type { DecoderInput, MeteorStatus, ChannelImage } from "./meteor/model";
 import type { Settings } from "./model";
@@ -54,6 +55,7 @@ export interface MultiplexSpectrum {
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "telemetry"; protocol: "adsb"; batch: AdsbBatch }
   | { type: "same"; batch: SameBatch }
   | { type: "reset"; protocol: "meteor" }
   | {

@@ -31,6 +31,8 @@ export async function createDecoder(
   input?: DecoderInput,
 ): Promise<DecoderPlugin | undefined> {
   switch (s.decoder) {
+    case "adsb":
+      return (await import("./adsb-plugin")).adsbPlugin(s, input);
     case "none":
       return undefined;
     case "wfm":

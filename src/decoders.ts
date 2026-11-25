@@ -1,6 +1,15 @@
 /** Discoverable decoder manifests. Only implemented modules appear in Decode as. */
 export type DecoderId =
-  "meteor" | "none" | "wfm" | "wwv" | "am" | "armer" | "nfm" | "ook" | "rtl433";
+  | "adsb"
+  | "meteor"
+  | "none"
+  | "wfm"
+  | "wwv"
+  | "am"
+  | "armer"
+  | "nfm"
+  | "ook"
+  | "rtl433";
 export interface DecoderManifest {
   id: DecoderId;
   name: string;
@@ -16,6 +25,19 @@ export interface DecoderManifest {
   bandwidths: number[];
 }
 export const decoders: DecoderManifest[] = [
+  {
+    id: "adsb",
+    name: "ADS-B · 1090 MHz aircraft",
+    description:
+      "1090ES / Mode S · aircraft positions, identification and telemetry",
+    requirements: {
+      minSampleRate: 2400000,
+      bandwidthHz: 2000000,
+      inputSampleRate: 2400000,
+    },
+    outputs: ["telemetry", "message"],
+    bandwidths: [2000000],
+  },
   {
     id: "none",
     name: "None · spectrum only",

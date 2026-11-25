@@ -79,3 +79,9 @@ Runtime dependency notices and licenses: same-NOTICE.txt.
 The SAME audio taps, attention-tone observer, UI/history and test waveform
 construction are original project code. Geographic aliases use public-domain
 U.S. Census county/equivalent names; event descriptions use NWS/FCC code tables.
+
+ADS-B / Mode S uses the standalone dump1090-fa WASM core (GPL-2.0-or-later).
+See dump1090-NOTICE.txt, dump1090-fa-source.tar.gz, dump1090-bridge.c and
+its complete build recipe dump1090-build.sh for provenance and corresponding
+source. Leaflet's BSD-2-Clause notice is included. OSM attribution is shown on
+its tile layer; external tiles are not included in the offline app cache.

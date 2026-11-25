@@ -65,6 +65,9 @@ async function process(data?: ArrayBuffer) {
   if (!result) throw Error("The decoder did not return its input buffer.");
   const iq = new Uint8Array(result.data);
   for (const event of result.events)
+    if (event.type === "telemetry" && event.protocol === "adsb")
+      event.batch.source = data ? (input.replay ? "replay" : "live") : "test";
+  for (const event of result.events)
     if (event.type === "same") {
       event.batch.source = data ? (input.replay ? "replay" : "live") : "test";
       if (input.referenceTime) event.batch.referenceTime = input.referenceTime;

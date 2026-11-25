@@ -11,3 +11,4 @@ node scripts/check-nfm.mjs
 node scripts/check-ook.mjs
 node scripts/check-rtl433.mjs
 node scripts/check-same.mjs
+node scripts/check-adsb.mjs

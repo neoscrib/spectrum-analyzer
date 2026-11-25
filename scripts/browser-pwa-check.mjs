@@ -133,7 +133,8 @@ try {
       );
     return (await cache.keys()).map((request) => new URL(request.url).pathname);
   });
-  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 9);
+  assert.equal(cached.filter((path) => path.endsWith(".wasm")).length, 10);
+  assert(cached.some((path) => /same_bg.*\.wasm$/.test(path)));
   assert(cached.includes("/audio-worklet.js"));
   assert(cached.some((path) => path.includes("capture.worker")));
   assert(cached.some((path) => path.includes("decoder.worker")));
@@ -259,6 +260,19 @@ try {
       .getByRole("button", { name: "Stop test signal", exact: true })
       .click();
   }
+  const same = page.getByRole("region", { name: "EAS/SAME reception" });
+  await same
+    .getByText("Recorded audio, IQ replay & generated test", { exact: true })
+    .click();
+  await same
+    .getByRole("button", {
+      name: "Decode generated SAME test audio",
+      exact: true,
+    })
+    .click();
+  await expect(
+    same.getByText("Repeated headers agree", { exact: true }),
+  ).toBeVisible({ timeout: 15000 });
   assert.equal(requests, count, "Offline decoding must not contact the origin");
   // Verify that credential-bearing API requests are never added to the cache.
   await expect
@@ -390,6 +404,7 @@ try {
     cachedFiles: cached.length,
     offlineDecoders: decoded,
     offlineAudio: true,
+    offlineSame: true,
     offlineRecordingBytes: 9600000,
     browserRestart: true,
     serverStoppedReload: true,

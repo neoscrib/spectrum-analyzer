@@ -146,11 +146,14 @@ export const receiverCapabilities = {
 };
 export function compatibility(
   manifest: DecoderManifest,
-  receiver = receiverCapabilities,
+  receiver: typeof receiverCapabilities & {
+    availableSampleRate?: number;
+  } = receiverCapabilities,
 ): string | null {
-  if (manifest.requirements.minSampleRate > receiver.sampleRate)
-    return `Needs ${(manifest.requirements.minSampleRate / 1e6).toFixed(1)} MSPS; this receiver captures ${(receiver.sampleRate / 1e6).toFixed(1)} MSPS.`;
-  if (manifest.requirements.bandwidthHz > receiver.sampleRate)
+  const available = receiver.availableSampleRate ?? receiver.sampleRate;
+  if (manifest.requirements.minSampleRate > available)
+    return `Needs ${(manifest.requirements.minSampleRate / 1e6).toFixed(1)} MSPS; this receiver captures ${(available / 1e6).toFixed(3)} MSPS.`;
+  if (manifest.requirements.bandwidthHz > available)
     return "Decoder bandwidth exceeds the captured band.";
   if (
     manifest.requirements.inputSampleRate &&

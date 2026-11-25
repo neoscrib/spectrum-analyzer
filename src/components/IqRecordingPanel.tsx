@@ -7,6 +7,7 @@ import {
   type RecordingState,
 } from "../recording/model";
 import { canStreamToFolder, downloadBlob } from "../recording/storage";
+import type { ReceiverInfo } from "../sources/model";
 const size = (bytes: number) => `${(bytes / 1e6).toFixed(1)} MB`;
 export function IqRecordingPanel({
   state,
@@ -16,7 +17,9 @@ export function IqRecordingPanel({
   onStart,
   onStop,
   onClear,
+  receiver,
 }: {
+  receiver?: ReceiverInfo;
   state: RecordingState;
   active: boolean;
   busy: boolean;
@@ -46,8 +49,9 @@ export function IqRecordingPanel({
         <span className="chip">CU8</span>
       </div>
       <p className="caption">
-        Full 2.4 MHz capture · 2.4 MSPS · {size(BYTE_RATE)}/s (
-        {size(BYTE_RATE * 60)}/min).
+        CU8 at 2.4 MSPS · {size(BYTE_RATE)}/s ({size(BYTE_RATE * 60)}/min).
+        {receiver?.transport === "WebSocket" &&
+          " Records bridge output after any resampling and 8-bit conversion; native source details are retained in SigMF metadata."}
       </p>
       <label className="field-label" htmlFor="iq-storage">
         Save destination

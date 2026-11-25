@@ -4,10 +4,14 @@ import type { ReplayOptions } from "./meteor/types";
 import type { SameOptions } from "./same/model";
 import { replayRange } from "./meteor/replay";
 import type { IqSource } from "./meteor/iq";
+import { openSource } from "./sources";
 import {
-  RTL2832U_Provider,
-  type RtlDevice,
-} from "@jtarrio/webrtlsdr/rtlsdr.js";
+  defaultSource,
+  validateSourceDecoder,
+  type RadioSource,
+  type SourceOptions,
+  type ReceiverInfo,
+} from "./sources/model";
 import { SAMPLE_RATE, validateSettings, type Settings } from "./model";
 import type { Frame, WorkerIn, WorkerOut } from "./types";
 import type { ArmerPolicy } from "./armer/model";
@@ -22,12 +26,12 @@ import {
 export function usbError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/No device selected|cancelled|canceled/i.test(message))
-    return "Connection canceled. Click Connect RTL-SDR to choose a receiver.";
+    return "Connection canceled. Click Connect to choose a receiver.";
   if (/claim|access denied|busy|interface|Could not connect/i.test(message))
     return "USB interface unavailable. Close other SDR apps. If Linux’s TV driver owns the dongle, run bash scripts/prepare-usb.sh, then reconnect.";
   if (/not found|disconnect|transfer/i.test(message))
     return (
-      "USB reception stopped. Check the receiver connection and reconnect. " +
+      "Reception stopped. Check the receiver connection and reconnect. " +
       message
     );
   return message;
@@ -79,6 +83,10 @@ export class RadioSession {
       {
         filename: sink.filename,
         source: this.source,
+        receiver:
+          this.source === "live"
+            ? structuredClone(this.device?.info)
+            : undefined,
         settings:
           this.settings.decoder === "meteor" &&
           this.meteorAppliedBias !== undefined
@@ -123,8 +131,8 @@ export class RadioSession {
     this.recorder = undefined;
     this.onRecording({ ...idleRecording });
   }
-  private device?: RtlDevice;
-  private provider?: RTL2832U_Provider;
+  private device?: RadioSource;
+  onReceiver: (info: ReceiverInfo) => void = () => {};
   private worker?: Worker;
   private running = false;
   private source: "live" | "test" | "replay" = "live";
@@ -281,7 +289,8 @@ export class RadioSession {
   async connect(
     settings: Settings,
     monitor: NfmMonitorConfig | null = null,
-  ): Promise<void> {
+    options: SourceOptions = defaultSource,
+  ): Promise<Settings> {
     validateSettings(settings);
     if (this.running || this.worker || this.device || this.stopping)
       throw Error("Stop the current source before connecting.");
@@ -289,31 +298,46 @@ export class RadioSession {
       throw Error(
         "WebUSB requires localhost or HTTPS. Open Spectrum on a secure origin in Chrome or Edge.",
       );
-    if (!navigator.usb)
+    if (options.kind !== "soapy" && !navigator.usb)
       throw Error(
-        "WebUSB is unavailable. Use Chrome or Edge on the computer with your RTL-SDR.",
+        "WebUSB is unavailable. Use Chrome or Edge, or connect through the SoapySDR bridge.",
       );
     // Keep the chooser in the original user gesture, before initializing WASM/audio.
-    this.provider ??= new RTL2832U_Provider();
-    const opening = this.provider.get();
+    const opening = openSource(options);
     try {
       this.device = await opening;
+      this.onReceiver(this.device.info);
+      const caps = this.device.info;
+      const gain = Math.max(
+        caps.gain.min,
+        Math.min(caps.gain.max, settings.gain ?? caps.gain.min),
+      );
+      const steppedGain =
+        caps.gain.min +
+        Math.round((gain - caps.gain.min) / caps.gain.step) * caps.gain.step;
+      settings = {
+        ...settings,
+        gain:
+          settings.gain === null && caps.gain.auto
+            ? null
+            : Number(
+                Math.max(
+                  caps.gain.min,
+                  Math.min(caps.gain.max, steppedGain),
+                ).toFixed(6),
+              ),
+        ppm: caps.ppm ? settings.ppm : 0,
+      };
+      validateSourceDecoder(settings, this.device.info);
       await this.init(settings, monitor);
-      const rate = await this.device.setSampleRate(SAMPLE_RATE);
-      if (rate !== SAMPLE_RATE)
-        throw Error(
-          `Receiver returned ${rate} samples/s; this decoder requires 2.4 MSPS.`,
-        );
-      await this.device.setFrequencyCorrection(settings.ppm);
-      await this.device.setCenterFrequency(settings.center);
-      await this.device.setGain(settings.gain);
-      await this.device.enableBiasTee(false);
-      await this.device.resetBuffer();
+      await this.device.configure(settings);
+      this.onReceiver(this.device.info);
+      validateSourceDecoder(settings, this.device.info);
       this.running = true;
       this.source = "live";
       this.loop = this.readLoop(this.device);
+      return settings;
     } catch (error) {
-      this.provider = undefined;
       await this.stop();
       throw Error(usbError(error));
     }
@@ -452,7 +476,7 @@ export class RadioSession {
       this.post({ type: "iq", data, revision: this.revision }, [data]);
     });
   }
-  private async readLoop(device: RtlDevice) {
+  private async readLoop(device: RadioSource) {
     // Keep transfers queued continuously, as in Fieldglass. Waiting for pairs
     // creates a refill barrier even when the first buffer is already available.
     type ReadResult = { data: ArrayBuffer } | { error: unknown };
@@ -478,15 +502,10 @@ export class RadioSession {
           const command = this.commands.shift()!;
           try {
             const s = command.settings;
-            if (s.ppm !== this.settings?.ppm)
-              await device.setFrequencyCorrection(s.ppm);
-            if (
-              s.center !== this.settings?.center ||
-              s.ppm !== this.settings?.ppm
-            )
-              await device.setCenterFrequency(s.center);
-            if (s.gain !== this.settings?.gain) await device.setGain(s.gain);
-            await device.resetBuffer();
+            validateSourceDecoder(s, device.info);
+            await device.configure(s);
+            validateSourceDecoder(s, device.info);
+            this.onReceiver(device.info);
             this.configure(s, command.monitor, command.recenter);
             command.resolve();
           } catch (e) {
@@ -533,6 +552,7 @@ export class RadioSession {
     monitor: NfmMonitorConfig | null = null,
   ): Promise<void> {
     validateSettings(settings);
+    if (this.device) validateSourceDecoder(settings, this.device.info);
     if (!this.running) throw Error("Start a source before adjusting it.");
     if (this.source === "replay")
       throw Error("Stop replay before changing receiver or decoder settings.");
@@ -597,7 +617,6 @@ export class RadioSession {
     this.post({ type: "iq", data, revision: this.revision }, [data]);
   }
   private fail(message: string) {
-    this.provider = undefined;
     void this.stop(message);
     this.onError(message);
   }

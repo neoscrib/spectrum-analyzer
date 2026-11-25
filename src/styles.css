@@ -3237,6 +3237,12 @@ h1 {
 .meteor-bias .meteor-stat-grid { margin:12px 0 18px; }
 .meteor-bias .meteor-actions { margin-bottom:14px; }
 .meteor-bias>.checkbox-label { font-size:12px; }
+.receiver-source { display:grid; gap:12px; margin:18px 0; }
+.receiver-source label { display:grid; gap:7px; font-size:12px; color:#a1afbb; min-width:0; }
+.receiver-source input, .receiver-source select { width:100%; min-width:0; background:var(--input-bg, #11181e); color:var(--text, #cbd5df); border:1px solid var(--border, #35414b); border-radius:5px; padding:10px; font:12px 'DM Sans',sans-serif; }
+.receiver-source summary { cursor:pointer; font-size:12px; margin-bottom:8px; }
+.receiver-source .caption { margin:0; overflow-wrap:anywhere; }
+.receiver-source pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; line-height:1.7; }
 
 /* SAME remains a compact, optional audio inspection panel. */
 .same-controls {

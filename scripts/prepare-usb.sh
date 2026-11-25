@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Chrome cannot detach a kernel TV driver through WebUSB. Only touch matching
-# RTL2832/2838 devices, and only when the DVB driver currently owns an interface.
+# Chrome cannot detach a kernel TV driver through WebUSB. Use the same known
+# RTL2832U IDs as the chooser, and only release the RTL DVB interface driver.
+radio_repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+mapfile -t known_ids < <(python3 - "$radio_repo/src/sources/rtl-usb-ids.json" <<'PY'
+import json, sys
+for vendor, product in json.load(open(sys.argv[1])):
+    print(f"{vendor:04x}:{product:04x}")
+PY
+)
 found=0
 for device in /sys/bus/usb/devices/*; do
   [[ -r "$device/idVendor" && -r "$device/idProduct" ]] || continue
-  [[ "$(< "$device/idVendor")" == 0bda ]] || continue
-  product="$(< "$device/idProduct")"
-  [[ "$product" == 2832 || "$product" == 2838 ]] || continue
+  usb_id="$(< "$device/idVendor"):$(< "$device/idProduct")"
+  match=0
+  for known_id in "${known_ids[@]}"; do
+    if [[ "$usb_id" == "$known_id" ]]; then match=1; break; fi
+  done
+  [[ "$match" == 1 ]] || continue
   found=1
   for interface in "$device":*; do
     [[ -L "$interface/driver" ]] || continue
@@ -18,5 +28,5 @@ for device in /sys/bus/usb/devices/*; do
     printf '%s' "$name" | sudo tee "$driver/unbind" >/dev/null
   done
 done
-if [[ "$found" == 0 ]]; then printf 'No matching RTL2832/2838 dongle is connected.\n' >&2; exit 1; fi
+if [[ "$found" == 0 ]]; then printf 'No matching RTL2832U dongle is connected.\n' >&2; exit 1; fi
 printf 'Close other SDR software, then use Connect receiver in Chrome.\n'

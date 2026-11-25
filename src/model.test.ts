@@ -56,7 +56,7 @@ describe("independent tuning and displayed bandwidth", () => {
     expect(() => validateSettings({ ...defaults, center: NaN })).toThrow(
       /Center frequency/,
     );
-    expect(() => validateSettings({ ...defaults, gain: 60 })).toThrow(/Gain/);
+    expect(() => validateSettings({ ...defaults, gain: 200 })).toThrow(/gain/i);
   });
 });
 

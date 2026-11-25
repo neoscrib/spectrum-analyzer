@@ -1,4 +1,5 @@
 import { SAMPLE_RATE, type Settings } from "../model";
+import type { ReceiverInfo } from "../sources/model";
 export const BYTE_RATE = SAMPLE_RATE * 2;
 export const MEMORY_LIMIT = 64 * 1024 * 1024;
 export const QUEUE_LIMIT = 16 * 1024 * 1024;
@@ -7,6 +8,7 @@ export interface CaptureInfo {
   source: "live" | "test";
   settings: Settings;
   startedAt: string;
+  receiver?: ReceiverInfo;
 }
 export interface RecordingState {
   phase: "idle" | "recording" | "saving" | "complete" | "error";
@@ -54,12 +56,17 @@ export function captureMetadata(
       {
         global: {
           "core:datatype": "cu8",
-          ...(s.decoder === "meteor"
+          ...(s.decoder === "meteor" || info.receiver
             ? {
                 "core:extensions": [
                   { name: "spectrum", version: "1.0.0", optional: true },
                 ],
-                "spectrum:meteor": { ...s.meteor, frequency: s.channel },
+                ...(s.decoder === "meteor"
+                  ? { "spectrum:meteor": { ...s.meteor, frequency: s.channel } }
+                  : {}),
+                ...(info.receiver
+                  ? { "spectrum:receiver": info.receiver }
+                  : {}),
               }
             : {}),
           "core:sample_rate": SAMPLE_RATE,
@@ -67,15 +74,23 @@ export function captureMetadata(
           "core:dataset": info.filename,
           "core:recorder": "Spectrum browser SDR",
           "core:description": [
-            info.source === "test"
+            info.source === "test" || info.receiver?.generated
               ? `GENERATED ${s.decoder.toUpperCase()} IQ; not received RF.`
-              : "Live RTL-SDR WebUSB IQ.",
-            `Unfiltered full capture; I then Q, unsigned 8-bit, zero near 127.5. ${bytes} bytes; ${samples} complex samples; ${(bytes / BYTE_RATE).toFixed(6)} seconds.`,
-            `Requested tuner gain: ${s.gain === null ? "auto" : s.gain + " dB"}; PPM correction: ${s.ppm}. Bias tee off.`,
+              : info.receiver
+                ? `Live ${info.receiver.name} ${info.receiver.transport} IQ; native ${info.receiver.nativeFormat} at ${info.receiver.nativeRate} samples/s.`
+                : "Live RTL-SDR WebUSB IQ.",
+            `${info.receiver?.transport === "WebSocket" ? "Bridge output after streaming sample-rate conversion when needed and 8-bit quantization" : "Full capture before decoder channel filtering"}; I then Q, unsigned 8-bit, zero near 127.5. ${bytes} bytes; ${samples} complex samples; ${(bytes / BYTE_RATE).toFixed(6)} seconds.`,
+            `Requested tuner gain: ${s.gain === null ? "auto" : s.gain + " dB"}; PPM correction: ${s.ppm}. ${info.receiver?.transport === "WebSocket" ? "Antenna power follows the native driver's settings; not controlled by the bridge." : "Bias tee off."}`,
             `Selected decoder: ${s.decoder}; channel: ${s.channel} Hz; decoder bandwidth: ${s.bandwidth} Hz (not applied to recorded IQ).`,
-            `Capture ended: ${reason}. Timestamp is approximate host receipt time of the first recorded block, not a hardware clock. USB continuity is not hardware timestamp-verified.`,
+            `Capture ended: ${reason}. Timestamp is approximate host receipt time of the first recorded block, not a hardware clock. Sample continuity is not hardware timestamp-verified.`,
           ].join(" "),
-          ...(info.source === "live" ? { "core:hw": "RTL-SDR (WebUSB)" } : {}),
+          ...(info.source === "live"
+            ? {
+                "core:hw": info.receiver
+                  ? `${info.receiver.name} (${info.receiver.transport})`
+                  : "RTL-SDR (WebUSB)",
+              }
+            : {}),
         },
         captures: samples
           ? [
@@ -92,7 +107,7 @@ export function captureMetadata(
                 "core:sample_start": 0,
                 "core:sample_count": samples,
                 "core:label":
-                  info.source === "test"
+                  info.source === "test" || info.receiver?.generated
                     ? "GENERATED test IQ"
                     : "Live RF capture",
               },

@@ -1,6 +1,6 @@
 # Spectrum
 
-A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and WebAssembly ADS-B / Mode S aircraft tracking, WFM stereo, NFM, AM, optional EAS/SAME audio, OOK/ASK, rtl_433, WWV time-code, ARMER P25 Phase I, and Meteor-M LRPT decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup and TLE refresh are optional network services.
+A browser-based SDR spectrum analyzer with a WebUSB receiver and WebAssembly ADS-B / Mode S aircraft tracking, WFM stereo, NFM, AM, optional EAS/SAME audio, OOK/ASK, rtl_433, WWV time-code, ARMER P25 Phase I, and Meteor-M LRPT decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup and TLE refresh are optional network services.
 
 ```sh
 npm ci
@@ -8,6 +8,12 @@ npm run dev
 ```
 
 Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-SDR. Development uses port 5176; the installable production app uses port 5177. Both servers bind to loopback and avoid the reference apps. Generated WASM is included; normal frontend development requires Node/npm, not Rust; optional alias lookup also uses Go 1.26+. The verification scripts import TypeScript fixtures directly and need Node 22.18+ (Node 26 is used here).
+
+## Radio sources
+
+Select the radio in **Receiver → Radio source**. RTL-SDR and HackRF One connect directly through WebUSB. The optional local SoapySDR bridge adds Airspy R2/Mini/HF+, SDRplay RSP, LimeSDR, bladeRF, USRP, PlutoSDR and other installed receive drivers. Device capabilities govern tuning, gain and decoder compatibility. See the [bridge and hardware guide](bridge/README.md) for installation, TLS, driver requirements and validation limits.
+
+Live decoder input remains CU8 at 2.4 MSPS. Bridge sources are resampled when needed and converted to 8-bit IQ; their native rate/format are displayed and retained in recording metadata. High-bit-depth ADC precision is not preserved in this initial implementation.
 
 ## Install and use offline
 

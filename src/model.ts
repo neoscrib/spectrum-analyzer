@@ -73,9 +73,9 @@ export function validateSettings(s: Settings): void {
   validateMeteor(s.meteor);
   validateRtl433(s.rtl433);
   validateOok(s.ook);
-  if (!Number.isFinite(s.center) || s.center < 24e6 || s.center > 1766e6)
+  if (!Number.isFinite(s.center) || s.center <= 0 || s.center > 100e9)
     throw Error(
-      "Center frequency must be between 24 and 1766 MHz for the supported R820T/R828D tuner.",
+      "Center frequency must be positive and no greater than 100 GHz. Receiver tuning limits are checked when connecting.",
     );
   if (!Number.isFinite(s.span) || s.span < 25_000 || s.span > SAMPLE_RATE)
     throw Error("Displayed bandwidth must be between 25 kHz and 2.4 MHz.");
@@ -106,9 +106,11 @@ export function validateSettings(s: Settings): void {
     );
   if (
     s.gain !== null &&
-    (!Number.isFinite(s.gain) || s.gain < 0 || s.gain > 49.6)
+    (!Number.isFinite(s.gain) || s.gain < -100 || s.gain > 150)
   )
-    throw Error("Gain must be between 0 and 49.6 dB.");
+    throw Error(
+      "Enter a valid gain from −100 to 150 dB. Receiver gain limits are checked when connecting.",
+    );
   if (!Number.isFinite(s.ppm) || Math.abs(s.ppm) > 200)
     throw Error("Frequency correction must be between −200 and +200 ppm.");
   if (![0, 50, 75].includes(s.deemphasis))

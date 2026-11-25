@@ -8,3 +8,5 @@ artifacts/
 .env.*.local
 
 fixtures/*.wav
+__pycache__/
+.venv/

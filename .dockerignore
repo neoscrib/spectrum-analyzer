@@ -9,3 +9,5 @@ wasm/target
 *.log
 
 fixtures/*.wav
+.venv
+**/__pycache__

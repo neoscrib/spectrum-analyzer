@@ -78,11 +78,7 @@ import starterAliases from "./armer/starter.json";
 import { AutoCenterTiming, chooseArmerCenter } from "./armer/auto-center";
 import { listens } from "./armer/model";
 import { audibleTalkgroup, DEFAULT_ARMER_MIX } from "./armer/audio";
-import {
-  compatibility,
-  receiverCapabilities,
-  wwvFrequencies,
-} from "./decoders";
+import { compatibility, wwvFrequencies } from "./decoders";
 import type { WwvStatus, MultiplexSpectrum } from "./types";
 import {
   AUDIO_RATE,
@@ -96,6 +92,14 @@ import {
   type Settings,
 } from "./model";
 import { RadioSession } from "./radio";
+import { ReceiverSource } from "./components/ReceiverSource";
+import {
+  readSourceOptions,
+  sourceDefaults,
+  validateSourceDecoder,
+  type ReceiverInfo,
+  type SourceOptions,
+} from "./sources/model";
 import { AppAccess } from "./components/AppAccess";
 
 const mhz = (hz: number) => (hz / 1e6).toFixed(4);
@@ -120,6 +124,13 @@ const emptyMetrics: Metrics = {
 
 export default function App() {
   const [settings, setSettings] = useState(readSettings);
+  const [sourceOptions, setSourceOptions] = useState(readSourceOptions);
+  const [receiverInfo, setReceiverInfo] = useState<ReceiverInfo | null>(null);
+  const receiver = receiverInfo ?? sourceDefaults(sourceOptions.kind);
+  useEffect(() => {
+    const { token: _token, ...saved } = sourceOptions;
+    localStorage.setItem("spectrum-source", JSON.stringify(saved));
+  }, [sourceOptions]);
   const adsbQueue = useRef<AdsbBatch[]>([]);
   const [meteorStatus, setMeteorStatus] = useState<MeteorStatus | null>(null);
   const [meteorImages, setMeteorImages] = useState<ChannelImage[]>([]);
@@ -234,8 +245,33 @@ export default function App() {
   const radio = useRef<RadioSession | null>(null);
   const audio = useRef<BrowserAudio | null>(null);
   if (!radio.current) radio.current = new RadioSession();
+  radio.current.onReceiver = setReceiverInfo;
   if (!audio.current) audio.current = new BrowserAudio();
   const active = source !== "idle";
+  function chooseSource(next: SourceOptions) {
+    if (active || busy) return;
+    if (
+      next.kind !== sourceOptions.kind ||
+      next.url !== sourceOptions.url ||
+      next.args !== sourceOptions.args
+    )
+      setReceiverInfo(null);
+    if (next.kind !== sourceOptions.kind) {
+      setReceiverInfo(null);
+      const caps = sourceDefaults(next.kind);
+      const gain =
+        settings.gain === null && caps.gain.auto
+          ? null
+          : Math.max(
+              caps.gain.min,
+              Math.min(caps.gain.max, settings.gain ?? 24),
+            );
+      const ppm = caps.ppm ? settings.ppm : 0;
+      setSettings((s) => ({ ...s, gain, ppm }));
+      setRfDraft({ gain: gain ?? 24, auto: gain === null, ppm: String(ppm) });
+    }
+    setSourceOptions(next);
+  }
   const recordLocked =
     recordPreparing ||
     recording.phase === "recording" ||
@@ -508,6 +544,7 @@ export default function App() {
       if (next.decoder === "meteor")
         next = { ...next, meteor: defaultLiveDoppler(next.meteor) };
       validateSettings(next);
+      if (source === "live") validateSourceDecoder(next, receiver);
       setReplayView(null);
       resetMeteor();
       if (active && settingsRef.current.decoder === "armer")
@@ -691,11 +728,18 @@ export default function App() {
       // connect() invokes the USB chooser before its first await.
       const starting =
         kind === "live"
-          ? radio.current!.connect(s, monitor)
+          ? radio.current!.connect(s, monitor, sourceOptions)
           : (radio.current!.setTestSpeed(s.decoder === "wwv" ? testSpeed : 1),
             radio.current!.test(s, monitor));
-      await starting;
-      setSettings(s);
+      const connected = await starting;
+      const applied = connected ?? s;
+      setSettings(applied);
+      if (kind === "live")
+        setRfDraft({
+          gain: applied.gain ?? receiver.gain.min,
+          auto: applied.gain === null,
+          ppm: String(applied.ppm),
+        });
       setSource(kind);
       setAppliedMonitor(monitor);
       return true;
@@ -814,7 +858,7 @@ export default function App() {
       originalSource = sourceRef.current;
     const filename = captureName(
       current,
-      originalSource === "test" ? "test" : "live",
+      originalSource === "test" || receiver.generated ? "test" : "live",
     );
     let sink;
     try {
@@ -897,12 +941,12 @@ export default function App() {
             <AudioLines size={25} strokeWidth={1.7} />
           </div>
           <span>
-            Spectrum<span className="brand-sub">RTL-SDR ANALYZER</span>
+            Spectrum<span className="brand-sub">SDR ANALYZER</span>
           </span>
         </a>
         <div className="header-right">
           <span className="local-badge">
-            <span /> All processing stays local
+            <span /> Decoding stays in this browser
           </span>
           <AppAccess canUpdate={!active && !busy && !recordLocked} />
           <button
@@ -928,7 +972,7 @@ export default function App() {
             {busy
               ? "Applying…"
               : source === "live"
-                ? "RTL-SDR connected"
+                ? `${receiver.name} connected`
                 : source === "replay"
                   ? "Replaying local I/Q"
                   : source === "test"
@@ -952,11 +996,11 @@ export default function App() {
         {help && (
           <div className="help-panel">
             <div>
-              <h2>Connect your RTL-SDR</h2>
+              <h2>Connect your radio</h2>
               <p>
-                Use Chrome or Edge on the computer connected to your RTL-SDR,
-                close other SDR applications, then choose your receiver in the
-                USB picker. Linux users can run{" "}
+                Choose RTL-SDR or HackRF over USB in Chrome or Edge, or a
+                SoapySDR bridge, close other SDR applications, then choose your
+                receiver in the USB picker. Linux users can run{" "}
                 <code>bash scripts/prepare-usb.sh</code> if the TV driver holds
                 the interface.
               </p>
@@ -990,8 +1034,8 @@ export default function App() {
                   <input
                     id="center"
                     type="number"
-                    min="24"
-                    max="1766"
+                    min={receiver.minHz / 1e6}
+                    max={receiver.maxHz / 1e6}
                     step="0.0001"
                     value={
                       source === "replay" && replayView
@@ -1312,19 +1356,33 @@ export default function App() {
                 <h2>
                   <Usb size={17} /> Receiver
                 </h2>
-                <span className="chip">WEBUSB</span>
+                <span className="chip">{receiver.transport.toUpperCase()}</span>
               </div>
               <div className="receiver-details">
                 <div className="device-icon">
                   <Radio size={24} />
                 </div>
                 <div>
-                  <strong>RTL-SDR</strong>
-                  <span>RTL2832U · R820T / R828D</span>
+                  <strong>{receiver.name}</strong>
+                  <span>
+                    {(receiver.minHz / 1e6).toFixed(2)}–
+                    {(receiver.maxHz / 1e6).toFixed(2)} MHz
+                  </span>
                 </div>
               </div>
+              <ReceiverSource
+                known={!!receiverInfo || sourceOptions.kind !== "soapy"}
+                options={sourceOptions}
+                info={receiver}
+                disabled={active || busy}
+                onChange={chooseSource}
+              />
               <div className="capture-row">
-                <span>Capture rate</span>
+                <span>
+                  {sourceOptions.kind === "soapy"
+                    ? "Decoder input"
+                    : "Capture rate"}
+                </span>
                 <strong>
                   {(inputRate / 1e6).toFixed(inputRate === SAMPLE_RATE ? 1 : 4)}{" "}
                   <small>MSPS</small>
@@ -1333,7 +1391,7 @@ export default function App() {
               <p className="caption">
                 {replayView
                   ? "Recorded sample rate."
-                  : "Fixed acquisition rate."}{" "}
+                  : "Decoder input rate; device rate is shown above."}{" "}
                 Display span and decoder bandwidth are independent.
               </p>
               {active ? (
@@ -1357,7 +1415,13 @@ export default function App() {
                     onClick={() => void start("live")}
                   >
                     <Power size={17} />
-                    {busy ? "Connecting…" : "Connect RTL-SDR"}
+                    {busy
+                      ? "Connecting…"
+                      : sourceOptions.kind === "rtl"
+                        ? "Connect RTL-SDR"
+                        : sourceOptions.kind === "hackrf"
+                          ? "Connect HackRF"
+                          : "Connect SDR bridge"}
                   </button>
                   <button
                     className="button test-button"
@@ -1444,8 +1508,24 @@ export default function App() {
                     <option
                       key={d.id}
                       value={d.id}
-                      disabled={!!compatibility(d)}
-                      title={compatibility(d) ?? undefined}
+                      disabled={
+                        !!compatibility(d, {
+                          ...receiver,
+                          availableSampleRate: Math.min(
+                            receiver.nativeRate,
+                            receiver.sampleRate,
+                          ),
+                        })
+                      }
+                      title={
+                        compatibility(d, {
+                          ...receiver,
+                          availableSampleRate: Math.min(
+                            receiver.nativeRate,
+                            receiver.sampleRate,
+                          ),
+                        }) ?? undefined
+                      }
                     >
                       {d.name}
                     </option>
@@ -1458,8 +1538,9 @@ export default function App() {
               </p>
               {settings.decoder === "am" && (
                 <p className="caption" style={{ marginBottom: 16 }}>
-                  Current tuner path: 24–1766 MHz. Selecting AM preserves your
-                  tuned frequency.
+                  Current tuner path: {(receiver.minHz / 1e6).toFixed(2)}–
+                  {(receiver.maxHz / 1e6).toFixed(2)} MHz. Selecting AM
+                  preserves your tuned frequency.
                 </p>
               )}
               <fieldset
@@ -1680,10 +1761,10 @@ export default function App() {
                       {wwvFrequencies.map((hz) => (
                         <button
                           key={hz}
-                          disabled={busy || hz < receiverCapabilities.minHz}
+                          disabled={busy || hz < receiver.minHz}
                           title={
-                            hz < receiverCapabilities.minHz
-                              ? "Below this tuner's 24 MHz minimum; needs HF hardware or an upconverter"
+                            hz < receiver.minHz
+                              ? "Below this receiver's minimum frequency; select an HF-capable source or use an upconverter"
                               : "Tune WWV 25 MHz"
                           }
                           onClick={() =>
@@ -1913,9 +1994,9 @@ export default function App() {
                 id="gain"
                 className="gain-slider"
                 type="range"
-                min="0"
-                max="49.6"
-                step="0.1"
+                min={receiver.gain.min}
+                max={receiver.gain.max}
+                step={receiver.gain.step}
                 value={rfDraft.gain}
                 disabled={busy || rfDraft.auto}
                 onChange={(e) =>
@@ -1923,19 +2004,19 @@ export default function App() {
                 }
               />
               <div className="gain-ends">
-                <span>0 dB</span>
+                <span>{receiver.gain.min} dB</span>
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
                     checked={rfDraft.auto}
-                    disabled={busy}
+                    disabled={busy || !receiver.gain.auto}
                     onChange={(e) =>
                       setRfDraft((s) => ({ ...s, auto: e.target.checked }))
                     }
                   />{" "}
                   Auto gain
                 </label>
-                <span>49.6 dB</span>
+                <span>{receiver.gain.max} dB</span>
               </div>
               <div className="ppm-row">
                 <label htmlFor="ppm">Frequency correction</label>
@@ -1946,7 +2027,7 @@ export default function App() {
                     min="-200"
                     max="200"
                     value={rfDraft.ppm}
-                    disabled={busy}
+                    disabled={busy || !receiver.ppm}
                     onChange={(e) =>
                       setRfDraft((s) => ({ ...s, ppm: e.target.value }))
                     }
@@ -1981,11 +2062,14 @@ export default function App() {
                 · {settings.ppm} ppm{rfPending ? " · Pending RF changes" : ""}
               </p>
               <p className="caption">
-                Bias tee off. Gain rounds to a supported hardware step.
+                {sourceOptions.kind === "soapy"
+                  ? "Gain follows the native driver. Antenna power is not controlled by the bridge."
+                  : "Bias tee off. Gain rounds to a supported hardware step."}
               </p>
             </section>
 
             <IqRecordingPanel
+              receiver={receiver}
               state={recording}
               active={active && source !== "replay"}
               busy={busy}
@@ -2065,7 +2149,11 @@ export default function App() {
               </strong>
             </div>
             <div className="measurement">
-              <span>ADC clipping</span>
+              <span>
+                {sourceOptions.kind === "soapy"
+                  ? "Converted IQ clipping"
+                  : "ADC clipping"}
+              </span>
               <strong
                 className={active && metrics.clipping > 1 ? "warning-text" : ""}
               >
@@ -2090,7 +2178,7 @@ export default function App() {
         </div>
         <footer className="app-footer">
           <span>
-            <Cpu size={14} /> WebUSB + WebAssembly + Web Audio
+            <Cpu size={14} /> SDR + WebAssembly + Web Audio
           </span>
           <span>
             Power is relative dBFS, not calibrated dBm.{" "}

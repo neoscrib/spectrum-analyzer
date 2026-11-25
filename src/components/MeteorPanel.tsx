@@ -97,11 +97,14 @@ export function MeteorPanel({
     setError("");
     try {
       const response = await fetch(`/api/tle?id=${draft.satellite}`);
+      const text = await response.text();
       if (!response.ok)
         throw Error(
-          `TLE refresh failed (HTTP ${response.status}). You can paste orbital elements below.`,
+          response.headers.get("content-type")?.startsWith("text/plain") &&
+            text.trim()
+            ? text.trim().slice(0, 500)
+            : `TLE refresh failed (HTTP ${response.status}). Your existing elements are unchanged. Try again later or paste orbital elements below.`,
         );
-      const text = await response.text();
       parseTle(text, draft.satellite);
       patch({ tle: text });
     } catch (e) {
@@ -483,6 +486,15 @@ export function MeteorPanel({
               Apply Meteor settings
             </button>
           </div>
+          <p className="caption meteor-wide">
+            Orbital elements from <a href="https://celestrak.org/">CelesTrak</a>
+            , with <a href="https://db.satnogs.org/">SatNOGS DB</a> fallback.
+            SatNOGS data: Libre Space Foundation,{" "}
+            <a href="https://creativecommons.org/licenses/by-sa/4.0/">
+              CC BY-SA 4.0
+            </a>
+            .
+          </p>
           <div className="meteor-actions meteor-wide">
             Tune downlink:{" "}
             {[137100000, 137900000].map((hz) => (

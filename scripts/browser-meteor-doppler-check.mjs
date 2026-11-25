@@ -33,6 +33,27 @@ try {
   await expect(control).not.toBeChecked();
   await page.getByRole("button", { name: "Refresh TLE", exact: true }).click();
   await expect(control).toBeChecked();
+  // An upstream outage must explain the failure and retain the user's TLE.
+  const unavailable =
+    "TLE refresh unavailable: CelesTrak returned HTTP 503; SatNOGS returned HTTP 503. Your existing elements are unchanged. Try again later or paste a TLE.";
+  await context.route("**/api/tle?id=59051", (r) =>
+    r.fulfill({ status: 502, contentType: "text/plain", body: unavailable }),
+  );
+  await page.getByRole("button", { name: "Refresh TLE", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(unavailable);
+  await expect(
+    page.getByLabel("Meteor orbital elements", { exact: true }),
+  ).toHaveValue(tle);
+  await expect(control).toBeChecked();
+  await context.route("**/api/tle?id=59051", (r) =>
+    r.fulfill({
+      contentType: "text/plain",
+      body: tle,
+      headers: { "X-TLE-Source": "SatNOGS" },
+    }),
+  );
+  await page.getByRole("button", { name: "Refresh TLE", exact: true }).click();
+  await expect(page.getByRole("alert")).not.toBeVisible();
   await page
     .getByRole("button", { name: "Apply Meteor settings", exact: true })
     .click();

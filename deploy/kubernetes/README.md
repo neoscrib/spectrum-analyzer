@@ -1,9 +1,11 @@
 # Homelab deployment
 
 Spectrum is served at **https://spectrumsdr.com** in namespace `myapps`.
-The browser talks directly to the local RTL-SDR; the cluster needs no USB
-devices or persistent volumes. nginx serves the app, and a separate Go service
-handles the optional RadioReference lookup.
+The browser connects directly to RTL-SDR/HackRF over WebUSB, or to an optional
+SoapySDR bridge running beside the radio. The cluster needs no USB devices or
+persistent volumes. nginx serves the app, and a separate Go service handles
+optional RadioReference lookups and TLE refresh. The Python radio bridge is a
+local helper and is not deployed in this namespace.
 
 Prerequisites: the existing `myapps` namespace, `myapps-gateway` (Traefik,
 HTTPS on port 8443), `letsencrypt-prod-spaceship` ClusterIssuer, and `ghcr-pull`

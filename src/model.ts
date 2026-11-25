@@ -1,4 +1,5 @@
 export const SAMPLE_RATE = 2_400_000;
+import { sameDefaults, type SameOptions } from "./same/model";
 export const AUDIO_RATE = 48_000;
 export const FFT_SIZE = 8192;
 import { decoders, type DecoderId } from "./decoders";
@@ -16,6 +17,7 @@ import {
   type MeteorOptions,
 } from "./meteor/model";
 export interface Settings {
+  same: SameOptions;
   meteor: MeteorOptions;
   armerAutoCenter: boolean;
   rtl433: Rtl433Options;
@@ -35,6 +37,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  same: sameDefaults,
   meteor: meteorDefaults,
   armerAutoCenter: true,
   rtl433: rtl433Defaults,
@@ -54,6 +57,12 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  if (
+    !s.same ||
+    typeof s.same.enabled !== "boolean" ||
+    typeof s.same.attention !== "boolean"
+  )
+    throw Error("Choose whether to decode SAME and attention tones.");
   if (typeof s.armerAutoCenter !== "boolean")
     throw Error("Choose whether ARMER should auto-center active talkgroups.");
   validateMeteor(s.meteor);
@@ -168,6 +177,7 @@ export function readSettings(): Settings {
       meteor.autoBiasDefaultVersion = 1;
     }
     saved.meteor = meteor;
+    saved.same = { ...sameDefaults, ...saved.same };
     validateSettings(saved);
     return saved;
   } catch {

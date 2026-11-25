@@ -24,7 +24,6 @@ export class NfmDecoder {
         return this;
     }
     /**
-     * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
      * @param {Uint8Array | number[]} iq
      * @returns {Float32Array}
      */
@@ -35,6 +34,13 @@ export class NfmDecoder {
         var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v2;
+    }
+    /**
+     * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
+     * @param {boolean} enabled
+     */
+    set_audio_tap_enabled(enabled) {
+        wasm.nfmdecoder_set_audio_tap_enabled(this.__wbg_ptr, enabled);
     }
     /**
      * @returns {string}
@@ -50,6 +56,15 @@ export class NfmDecoder {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    take_audio_tap() {
+        const ret = wasm.nfmdecoder_take_audio_tap(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
 }
 if (Symbol.dispose) NfmDecoder.prototype[Symbol.dispose] = NfmDecoder.prototype.free;

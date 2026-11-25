@@ -16,6 +16,12 @@ self.onmessage = ({ data }: MessageEvent<DecoderRequest & { id: number }>) => {
   loading = loading
     .then(async () => {
       switch (data.type) {
+        case "same-options":
+          // Optional WASM download must not block the live IQ request queue.
+          // Adapter epochs cancel stale loads when disabled or disposed.
+          void decoder?.setSameOptions?.(data.options);
+          settings = { ...settings, same: data.options };
+          break;
         case "configure":
           configuration = data;
           input = data.input ?? liveInput;
@@ -108,7 +114,10 @@ self.onmessage = ({ data }: MessageEvent<DecoderRequest & { id: number }>) => {
               input,
             );
           }
-          const events = decoder?.process(iq, data.firstSample) ?? [];
+          const events =
+            iq.length === 0 && decoder?.finish
+              ? decoder.finish()
+              : (decoder?.process(iq, data.firstSample) ?? []);
           expectedSample =
             data.firstSample +
             iq.byteLength /

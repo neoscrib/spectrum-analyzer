@@ -77,6 +77,7 @@ impl AmDemodulator {
 #[wasm_bindgen]
 pub struct AmDecoder {
     demodulator: AmDemodulator,
+    data_audio: Option<Vec<f32>>,
 }
 #[cfg(feature = "am")]
 #[wasm_bindgen]
@@ -85,16 +86,42 @@ impl AmDecoder {
     pub fn new(_offset_hz: f64, bandwidth_hz: f64) -> Self {
         Self {
             demodulator: AmDemodulator::new(_offset_hz, bandwidth_hz),
+            data_audio: None,
         }
     }
     /// 2.4 MSPS CU8 -> 48 kHz mono audio duplicated into interleaved L/R.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
-        self.demodulator.process(iq, |_| {})
+        if let Some(tap) = &mut self.data_audio {
+            tap.clear();
+        }
+        let tap = &mut self.data_audio;
+        self.demodulator.process(iq, |sample| {
+            if let Some(tap) = tap {
+                tap.push(sample);
+            }
+        })
     }
     /// Normalized F32 I/Q at 240 kSPS from dsp_core.
     pub fn process_baseband(&mut self, iq: &[f32]) -> Vec<f32> {
-        self.demodulator.process_baseband(iq, |_| {})
+        if let Some(tap) = &mut self.data_audio {
+            tap.clear();
+        }
+        let tap = &mut self.data_audio;
+        self.demodulator.process_baseband(iq, |sample| {
+            if let Some(tap) = tap {
+                tap.push(sample);
+            }
+        })
+    }
+    pub fn set_audio_tap_enabled(&mut self, enabled: bool) {
+        self.data_audio = enabled.then(Vec::new);
+    }
+    pub fn take_audio_tap(&mut self) -> Vec<f32> {
+        self.data_audio
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
     }
 }
 

@@ -116,6 +116,7 @@ pub struct WfmDecoder {
     // Optional observation only: never feeds back into the audio path.
     multiplex: Option<Vec<f32>>,
     rds: Option<RdsDecoder>,
+    data_audio: Option<Vec<f32>>,
 }
 
 #[wasm_bindgen]
@@ -144,11 +145,21 @@ impl WfmDecoder {
             warmup: 480,
             multiplex: None,
             rds: Some(RdsDecoder::new()),
+            data_audio: None,
         }
     }
 
     pub fn set_stereo_enabled(&mut self, enabled: bool) {
         self.stereo_enabled = enabled;
+    }
+    pub fn set_audio_tap_enabled(&mut self, enabled: bool) {
+        self.data_audio = enabled.then(Vec::new);
+    }
+    pub fn take_audio_tap(&mut self) -> Vec<f32> {
+        self.data_audio
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
     }
     pub fn stereo_locked(&self) -> bool {
         self.stereo_enabled && self.pilot.locked && self.blend > 0.95
@@ -200,6 +211,9 @@ impl WfmDecoder {
     /// Interleaved normalized F32 I/Q at 240 kSPS, with owned output PCM.
     pub fn process_baseband(&mut self, iq: &[f32]) -> Vec<f32> {
         let mut out = Vec::with_capacity(iq.len() / 5 + 2);
+        if let Some(tap) = &mut self.data_audio {
+            tap.clear();
+        }
         if let Some(tap) = &mut self.multiplex {
             tap.clear();
             tap.reserve(iq.len() / 2);
@@ -235,6 +249,10 @@ impl WfmDecoder {
             };
             self.blend += 0.0005206977 * (target - self.blend);
             let sum = self.audio.value();
+            // Mono L+R at 48 kHz, before stereo matrix/de-emphasis/volume.
+            if let Some(tap) = &mut self.data_audio {
+                tap.push(sum);
+            }
             // A phase-difference discriminator averages frequency over one IF
             // sample interval. Correct its sinc droop at 38 kHz so L-R has the
             // same gain as L+R; otherwise even a clean station leaks ~4% of L-R.
@@ -318,6 +336,12 @@ mod tests {
             .flat_map(|chunk| decoder.process(chunk))
             .collect();
         assert_eq!(expected, actual);
+        let mut tapped = WfmDecoder::new(100_000., 200_000., 50.);
+        tapped.set_audio_tap_enabled(true);
+        assert_eq!(expected, tapped.process(&iq));
+        let raw = tapped.take_audio_tap();
+        assert_eq!(raw.len(), expected.len() / 2);
+        assert!(tone_amplitude(&raw, 1300.) > 0.5);
     }
     #[test]
     fn deemphasis_attenuates_high_frequency_and_audio_filter_rejects_pilot() {

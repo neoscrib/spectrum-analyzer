@@ -3,6 +3,11 @@ import { MeteorImageStore } from "./meteor/image-store";
 import type { MeteorStatus, ChannelImage } from "./meteor/model";
 import type { MeteorReplayRequest } from "./components/MeteorPanel";
 import type { ReplayState } from "./radio";
+import type { SameBatch } from "./same/model";
+import type { AnalogReplayRequest } from "./components/SamePanel";
+const SamePanel = lazy(() =>
+  import("./components/SamePanel").then((m) => ({ default: m.SamePanel })),
+);
 const MeteorPanel = lazy(() =>
   import("./components/MeteorPanel").then((m) => ({ default: m.MeteorPanel })),
 );
@@ -206,6 +211,8 @@ export default function App() {
   multiplexVisible.current = multiplexEnabled;
   const multiplex = useRef<MultiplexSpectrum | null>(null);
   const [rds, setRds] = useState<RdsStatus | null>(null);
+  const sameQueue = useRef<SameBatch[]>([]);
+  const [sameSession, setSameSession] = useState(0);
   const pendingRds = useRef<RdsStatus | null>(null);
   const [rdsTest, setRdsTest] = useState(false);
   const [metrics, setMetrics] = useState(emptyMetrics);
@@ -245,6 +252,7 @@ export default function App() {
         fft.current = frame.spectrum;
       let stereo = false;
       for (const event of frame.events) {
+        if (event.type === "same") sameQueue.current.push(event.batch);
         if (event.type === "reset" && event.protocol === "meteor")
           resetMeteor();
         if (event.type === "telemetry" && event.protocol === "meteor") {
@@ -561,6 +569,7 @@ export default function App() {
     pendingRds.current = null;
     setRds(null);
     setRdsTest(kind === "test");
+    setSameSession((s) => s + 1);
     multiplex.current = null;
     armerPending.current = [];
     armerStatus.current = null;
@@ -716,6 +725,44 @@ export default function App() {
       setSource("replay");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function startAnalogReplay(request: AnalogReplayRequest) {
+    if (busy || active) return;
+    setBusy(true);
+    setError("");
+    audio.current!.pause();
+    setPlaying(false);
+    setMetrics(emptyMetrics);
+    fft.current = null;
+    pendingRds.current = null;
+    setRds(null);
+    setSameSession((s) => s + 1);
+    setReplay(null);
+    try {
+      validateSettings(request.settings);
+      await radio.current!.replay(
+        request.file,
+        request.source,
+        request.settings,
+        {
+          startSeconds: 0,
+          durationSeconds: null,
+          frequencyOffsetHz: 0,
+          autoBias: false,
+        },
+      );
+      setSettings(request.settings);
+      setReplayView({
+        settings: request.settings,
+        sampleRate: request.source.sampleRate,
+      });
+      setSource("replay");
+      setFrozen(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
@@ -1122,6 +1169,20 @@ export default function App() {
                 testSpeed={testSpeed}
               />
             )}
+            <Suspense fallback={null}>
+              <SamePanel
+                settings={settings}
+                queue={sameQueue}
+                sessionKey={sameSession}
+                active={active}
+                busy={busy}
+                onReplay={(request) => void startAnalogReplay(request)}
+                onOptions={(same) => {
+                  radio.current!.setSameOptions(same);
+                  setSettings((s) => ({ ...s, same }));
+                }}
+              />
+            </Suspense>
             {multiplexEnabled && (
               <MultiplexSpectrumView
                 data={multiplex}

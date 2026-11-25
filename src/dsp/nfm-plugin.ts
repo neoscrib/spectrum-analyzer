@@ -8,6 +8,7 @@ import {
   type NfmChannelStatus,
 } from "../presets/model";
 import type { DecoderPlugin } from "./plugins";
+import { SameAudio } from "./same-audio";
 
 export async function nfmPlugin(
   settings: Settings,
@@ -46,10 +47,25 @@ export async function nfmPlugin(
     ),
     wasActive: false,
     fade: 0,
+    same: new SameAudio(24000, `nfm:${preset.id}`, preset.frequency),
   }));
+  let sameEnabled = false;
+  let disposed = false;
+  const setSameOptions = async (options: Settings["same"]) => {
+    sameEnabled = options.enabled;
+    await Promise.all(
+      receivers.map(async (r) => {
+        await r.same.configure(options);
+        if (!disposed) r.native.set_audio_tap_enabled(r.same.active);
+      }),
+    );
+  };
+  await setSameOptions(settings.same);
   let selectedId: string | null = null,
     holdId = monitor?.holdId ?? null;
   return {
+    setSameOptions,
+    finish: () => receivers.flatMap((r) => r.same.finish()),
     setHold(id) {
       holdId = id;
     },
@@ -60,6 +76,13 @@ export async function nfmPlugin(
       for (const receiver of receivers) {
         const { preset, native } = receiver;
         const samples = native.process(iq);
+        if (sameEnabled)
+          events.push(
+            ...receiver.same.process(
+              native.take_audio_tap(),
+              firstSample / 2400000,
+            ),
+          );
         const measured = JSON.parse(native.status()) as Omit<
           NfmChannelStatus,
           "id" | "frequency"
@@ -132,7 +155,11 @@ export async function nfmPlugin(
       return events;
     },
     dispose() {
-      for (const r of receivers) r.native.free();
+      disposed = true;
+      for (const r of receivers) {
+        r.same.dispose();
+        r.native.free();
+      }
     },
   };
 }

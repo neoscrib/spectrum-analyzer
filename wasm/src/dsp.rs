@@ -87,7 +87,7 @@ impl Fir {
             {
                 sum[0] += h * (a + b);
             }
-            if n % 2 != 0 {
+            if !n.is_multiple_of(2) {
                 sum[0] += self.taps[length] * samples[length];
             }
         } else {
@@ -148,7 +148,7 @@ impl ComplexFir {
                 sum[0][ch] += h * (a[ch] + b[ch]);
             }
         }
-        if n % 2 != 0 {
+        if !n.is_multiple_of(2) {
             for ch in 0..2 {
                 sum[0][ch] += self.taps[half] * samples[half][ch];
             }
@@ -216,11 +216,10 @@ impl WfmDownconverter {
     }
     pub(crate) fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         let mut out = Vec::with_capacity(iq.len() / 10 + 2);
-        for pair in iq.chunks_exact(2) {
-            if let Some((i, q)) = self.first.push(pair[0], pair[1]) {
-                if let Some((i, q)) = self.second.push(i, q) {
+        for pair in iq.as_chunks::<2>().0 {
+            if let Some((i, q)) = self.first.push(pair[0], pair[1])
+                && let Some((i, q)) = self.second.push(i, q) {
                     out.extend_from_slice(&[i, q]);
-                }
             }
         }
         out
@@ -247,7 +246,7 @@ impl Downconverter {
 
     pub(crate) fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         let mut out = Vec::with_capacity(iq.len() / self.decimation + 2);
-        for pair in iq.chunks_exact(2) {
+        for pair in iq.as_chunks::<2>().0 {
             if let Some((i, q)) = self.push(pair[0], pair[1]) {
                 out.extend_from_slice(&[i, q]);
             }

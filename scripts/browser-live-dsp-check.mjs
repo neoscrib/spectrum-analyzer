@@ -68,7 +68,7 @@ try {
         },
       );
     await context.addInitScript(
-      ({ encoded, kind }) => {
+      ({ encoded, kind, sameEnabled }) => {
         localStorage.setItem("spectrum-show-rf-plots", "false");
         const center =
           kind === "wfm" ? 100000000 : kind === "am" ? 120000000 : 462400000;
@@ -80,6 +80,7 @@ try {
             channel: center + 187500,
             bandwidth: kind === "wfm" ? 200000 : kind === "am" ? 10000 : 12500,
             squelch: null,
+            same: { enabled: sameEnabled, attention: true },
           }),
         );
         const iq = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
@@ -143,6 +144,7 @@ try {
       {
         encoded: Buffer.from(performanceIq(kind, noise)).toString("base64"),
         kind,
+        sameEnabled: process.env.SAME_ENABLED === "1",
       },
     );
     const page = await context.newPage(),
@@ -209,6 +211,7 @@ try {
     const measurement = {
       kind,
       noise,
+      sameEnabled: process.env.SAME_ENABLED === "1",
       cpuThrottle: Number(process.env.CPU_THROTTLE || 4),
       wallSeconds: (Date.now() - start) / 1000,
       rfSeconds: metrics.samples / 2400000,

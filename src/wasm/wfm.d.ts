@@ -12,10 +12,12 @@ export class WfmDecoder {
      */
     process_baseband(iq: Float32Array | number[]): Float32Array;
     rds_status(): string;
+    set_audio_tap_enabled(enabled: boolean): void;
     set_multiplex_enabled(enabled: boolean): void;
     set_rds_enabled(enabled: boolean): void;
     set_stereo_enabled(enabled: boolean): void;
     stereo_locked(): boolean;
+    take_audio_tap(): Float32Array;
     /**
      * Owned, full-rate discriminator samples from the most recent block.
      * Disabled by default; no tap allocation/copying occurs while disabled.
@@ -33,10 +35,12 @@ export interface InitOutput {
     readonly wfmdecoder_pilot_level: (a: number) => number;
     readonly wfmdecoder_process_baseband: (a: number, b: number, c: number) => [number, number];
     readonly wfmdecoder_rds_status: (a: number) => [number, number];
+    readonly wfmdecoder_set_audio_tap_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_set_multiplex_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_set_rds_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_set_stereo_enabled: (a: number, b: number) => void;
     readonly wfmdecoder_stereo_locked: (a: number) => number;
+    readonly wfmdecoder_take_audio_tap: (a: number) => [number, number];
     readonly wfmdecoder_take_multiplex: (a: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

@@ -66,6 +66,7 @@ pub struct NfmDecoder {
     sub_second: Fir,
     codes: CodeDetector,
     samples: u64,
+    data_audio: Option<Vec<f32>>,
 }
 #[wasm_bindgen]
 impl NfmDecoder {
@@ -110,11 +111,24 @@ impl NfmDecoder {
             sub_second: Fir::new(lowpass(81, 320., 4800.)),
             codes: CodeDetector::new(),
             samples: 0,
+            data_audio: None,
         }
     }
     /// CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
+    pub fn set_audio_tap_enabled(&mut self, enabled: bool) {
+        self.data_audio = enabled.then(Vec::new);
+    }
+    pub fn take_audio_tap(&mut self) -> Vec<f32> {
+        self.data_audio
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
     pub fn process(&mut self, iq: &[u8]) -> Vec<f32> {
         let mut audio = Vec::with_capacity(iq.len() / 50 + 4);
+        if let Some(tap) = &mut self.data_audio {
+            tap.clear();
+        }
         for pair in iq.chunks_exact(2) {
             let i = (pair[0] as f64 - 127.5) / 128.;
             let q = (pair[1] as f64 - 127.5) / 128.;
@@ -167,6 +181,11 @@ impl NfmDecoder {
             let hz = cross.atan2(dot) * 24000. / (2. * std::f32::consts::PI);
             self.dc += 0.0013 * (hz - self.dc);
             let fm = hz - self.dc;
+            // 24 kHz discriminator audio before squelch, code filtering,
+            // voice high-pass, de-emphasis, limiting and 48 kHz interpolation.
+            if let Some(tap) = &mut self.data_audio {
+                tap.push(fm / self.deviation);
+            }
             self.noise_filter.push(fm);
             self.noise_delay[self.noise_pos] = fm;
             self.noise_pos = (self.noise_pos + 1) % 32;
@@ -300,6 +319,14 @@ mod tests {
         let mut a = NfmDecoder::new(162500., 12500., 2500., -5.);
         let silent = a.process(&data);
         assert!(silent.iter().all(|v| *v == 0.));
+        let mut tapped = NfmDecoder::new(162500., 12500., 2500., -5.);
+        tapped.set_audio_tap_enabled(true);
+        assert_eq!(silent, tapped.process(&data));
+        let raw = tapped.take_audio_tap();
+        assert_eq!(raw.len(), 48000); // Actual 24 kHz tap, not interpolated PCM.
+        assert!(raw.iter().any(|x| x.abs() > 0.2));
+        tapped.set_audio_tap_enabled(false);
+        assert!(tapped.take_audio_tap().is_empty());
         let mut a = NfmDecoder::new(162500., 12500., 2500., -65.);
         let mut b = NfmDecoder::new(162500., 12500., 2500., -65.);
         let whole = a.process(&data);

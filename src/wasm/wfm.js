@@ -67,6 +67,12 @@ export class WfmDecoder {
     /**
      * @param {boolean} enabled
      */
+    set_audio_tap_enabled(enabled) {
+        wasm.wfmdecoder_set_audio_tap_enabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @param {boolean} enabled
+     */
     set_multiplex_enabled(enabled) {
         wasm.wfmdecoder_set_multiplex_enabled(this.__wbg_ptr, enabled);
     }
@@ -88,6 +94,15 @@ export class WfmDecoder {
     stereo_locked() {
         const ret = wasm.wfmdecoder_stereo_locked(this.__wbg_ptr);
         return ret !== 0;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    take_audio_tap() {
+        const ret = wasm.wfmdecoder_take_audio_tap(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * Owned, full-rate discriminator samples from the most recent block.

@@ -1,6 +1,7 @@
 import type { MeteorBiasCommand } from "./meteor/bias";
 import { liveInput, type DecoderInput } from "./meteor/model";
 import type { ReplayOptions } from "./meteor/types";
+import type { SameOptions } from "./same/model";
 import { replayRange } from "./meteor/replay";
 import type { IqSource } from "./meteor/iq";
 import {
@@ -164,6 +165,10 @@ export class RadioSession {
       this.settings = { ...this.settings, stereo: enabled };
       if (this.worker) this.post({ type: "wfm-stereo", enabled });
     }
+  }
+  setSameOptions(options: SameOptions) {
+    if (this.settings) this.settings = { ...this.settings, same: options };
+    if (this.worker) this.post({ type: "same-options", options });
   }
   setWfmRds(enabled: boolean) {
     if (this.settings?.decoder === "wfm") {
@@ -356,16 +361,23 @@ export class RadioSession {
     validateSettings(settings);
     if (this.running || this.worker || this.device || this.stopping)
       throw Error("Stop the current source before replaying IQ.");
-    if (settings.decoder !== "meteor")
-      throw Error(
-        "This replay interface currently supports Meteor-M recordings.",
-      );
+    if (
+      settings.decoder !== "meteor" &&
+      !["am", "nfm", "wfm"].includes(settings.decoder)
+    )
+      throw Error("Select Meteor-M, AM, NFM or WFM for IQ replay.");
+    if (
+      settings.decoder !== "meteor" &&
+      (source.format !== "cu8" || source.sampleRate !== SAMPLE_RATE)
+    )
+      throw Error("Analog IQ replay requires CU8 at 2.4 MSPS.");
     const range = replayRange(source, options);
     try {
       await this.init(settings, null, {
         format: source.format,
         sampleRate: source.sampleRate,
         replay: options,
+        referenceTime: source.referenceTime,
       });
       this.source = "replay";
       this.running = true;
@@ -389,6 +401,7 @@ export class RadioSession {
     range: { offset: number; length: number; stride: number },
   ) {
     let lastProgress = performance.now();
+    let deadline = performance.now();
     try {
       for (
         let at = 0;
@@ -401,6 +414,12 @@ export class RadioSession {
           .arrayBuffer();
         if (!this.running) break;
         await this.replayBlock(data);
+        if (this.settings?.decoder !== "meteor") {
+          deadline += ((end - at) / range.stride / SAMPLE_RATE) * 1000;
+          const wait = deadline - performance.now();
+          if (wait > 0)
+            await new Promise((resolve) => setTimeout(resolve, wait));
+        }
         if (!this.running) break;
         this.replayState = {
           ...this.replayState!,

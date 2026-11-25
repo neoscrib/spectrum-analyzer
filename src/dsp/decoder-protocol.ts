@@ -4,8 +4,10 @@ import type { Settings } from "../model";
 import type { ArmerPolicy } from "../armer/model";
 import type { NfmMonitorConfig } from "../presets/model";
 import type { DecoderEvent } from "../types";
+import type { SameOptions } from "../same/model";
 
 export type DecoderRequest =
+  | { type: "same-options"; options: SameOptions }
   | { type: "meteor-bias"; command: MeteorBiasCommand }
   | {
       type: "configure";

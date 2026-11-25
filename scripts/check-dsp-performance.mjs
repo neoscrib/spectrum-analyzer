@@ -48,6 +48,14 @@ export function performanceIq(kind, noise = false) {
 
 async function benchmark() {
   const results = [];
+  const sameEnabled = process.env.SAME_ENABLED === "1";
+  let sameModule;
+  if (sameEnabled) {
+    sameModule = await import("../src/wasm/same.js");
+    await sameModule.default({
+      module_or_path: await readFile("src/wasm/same_bg.wasm"),
+    });
+  }
   for (const directory of [process.env.DSP_BASELINE_DIR, "src/wasm"].filter(
     Boolean,
   )) {
@@ -98,13 +106,28 @@ async function benchmark() {
                   ),
               );
       const process = () => {
-        for (const decoder of receivers) {
+        for (const [index, decoder] of receivers.entries()) {
           const pcm = front
             ? decoder.process_baseband(front.process(iq))
             : decoder.process(iq);
           assert(pcm.every(Number.isFinite));
+          if (sameEnabled) {
+            sameReceivers[index].process_audio(decoder.take_audio_tap());
+            if (sameReceivers[index].has_events())
+              sameReceivers[index].take_events();
+          }
         }
       };
+      const sameReceivers = sameEnabled
+        ? receivers.map((decoder) => {
+            assert(
+              decoder.set_audio_tap_enabled,
+              "This baseline predates SAME audio taps.",
+            );
+            decoder.set_audio_tap_enabled(true);
+            return new sameModule.SameDecoder(kind === "nfm" ? 24000 : 48000);
+          })
+        : [];
       for (let n = 0; n < 60; n++) process(); // Warm WASM and active CTCSS/DCS analysis.
       // Median of five rounds reduces JIT/scheduling noise in small CPU gains.
       const rounds = [];
@@ -121,11 +144,13 @@ async function benchmark() {
         kind,
         noise,
         channels,
+        sameEnabled,
         cpuPercent: Number(rounds[2].toFixed(2)),
         minCpuPercent: Number(rounds[0].toFixed(2)),
         maxCpuPercent: Number(rounds[4].toFixed(2)),
       });
       receivers.forEach((d) => d.free());
+      sameReceivers.forEach((d) => d.free());
       front?.free();
     }
   }

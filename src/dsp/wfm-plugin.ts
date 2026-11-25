@@ -5,6 +5,7 @@ import type { DecoderPlugin } from "./plugins";
 import type { DecoderEvent } from "../types";
 import type { RdsStatus } from "../rds/model";
 import { MultiplexAnalyzer } from "./multiplex-spectrum";
+import { SameAudio } from "./same-audio";
 export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
   await Promise.all([init(), initCore()]);
   const front = createChannelizer(s);
@@ -15,11 +16,22 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
   );
   native.set_stereo_enabled(s.stereo);
   native.set_rds_enabled(s.rds);
+  const same = new SameAudio(48000, "wfm", s.channel);
+  let nativeSameEnabled = false;
+  let disposed = false;
+  const setSameOptions = async (options: Settings["same"]) => {
+    nativeSameEnabled = options.enabled;
+    await same.configure(options);
+    if (!disposed) native.set_audio_tap_enabled(same.active);
+  };
+  await setSameOptions(s.same);
   let samplesSinceRds = 0,
     rdsDue = true;
   let multiplex: MultiplexAnalyzer | undefined;
   let samplesSinceSpectrum = 0;
   return {
+    setSameOptions,
+    finish: () => same.finish(),
     setMultiplexEnabled(enabled) {
       if (enabled === !!multiplex) return;
       multiplex = enabled
@@ -61,6 +73,11 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
           rds,
         },
       ];
+      if (nativeSameEnabled) {
+        events.push(
+          ...same.process(native.take_audio_tap(), firstSample / 2400000),
+        );
+      }
       if (multiplex) {
         const tap = native.take_multiplex();
         multiplex.push(tap);
@@ -81,6 +98,8 @@ export async function wfmPlugin(s: Settings): Promise<DecoderPlugin> {
       return events;
     },
     dispose() {
+      disposed = true;
+      same.dispose();
       native.free();
       front.free();
     },

@@ -27,6 +27,7 @@ export type MeteorOptions = Pick<
 };
 export type IqFormat = "cu8" | "cs16" | "cf32";
 export interface DecoderInput {
+  referenceTime?: string;
   sampleRate: number;
   format: IqFormat;
   replay?: ReplayOptions;

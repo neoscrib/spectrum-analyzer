@@ -3,6 +3,10 @@
 //! separate runtime module used by WFM, AM, WWV, OOK and rtl_433.
 #[allow(dead_code)]
 mod dsp;
+#[cfg(feature = "same")]
+mod same;
+#[cfg(feature = "same")]
+pub use same::SameDecoder;
 #[allow(unused_imports)]
 use dsp::{AUDIO_RATE, Downconverter, Fir, IF_RATE, INPUT_RATE, lowpass};
 #[cfg(feature = "core")]

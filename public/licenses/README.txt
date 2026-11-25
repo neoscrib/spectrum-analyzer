@@ -68,3 +68,14 @@ NRSC-4 / IEC 62106. The G0 character mapping and an independent transmitted-bit
 test vector were cross-checked/adapted from redsea (MIT), Oona Räisänen:
 https://github.com/windytan/redsea (b16943e17f6b954c87a70a35307691fc1bf5b735).
 License and copyright notice: redsea-MIT.txt.
+
+Optional EAS/SAME audio decoder:
+sameold 0.6.0 and sameplace 0.2.0 — MIT OR Apache-2.0 (MIT selected)
+https://github.com/cbs228/sameold
+Modem, symbol/byte synchronization and three-burst recovery are upstream code.
+The vendored 0.6.0 modem has one framing fix for the permitted eighth padding
+bit; see wasm/vendor/sameold/UPSTREAM.md in the source repository.
+Runtime dependency notices and licenses: same-NOTICE.txt.
+The SAME audio taps, attention-tone observer, UI/history and test waveform
+construction are original project code. Geographic aliases use public-domain
+U.S. Census county/equivalent names; event descriptions use NWS/FCC code tables.

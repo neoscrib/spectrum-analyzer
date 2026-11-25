@@ -1,4 +1,5 @@
 import type { MeteorBiasCommand } from "./meteor/bias";
+import type { SameBatch, SameOptions } from "./same/model";
 import type { DecoderInput, MeteorStatus, ChannelImage } from "./meteor/model";
 import type { Settings } from "./model";
 import type { RdsStatus } from "./rds/model";
@@ -53,6 +54,7 @@ export interface MultiplexSpectrum {
  * the main thread, which transfers audio onward to its AudioWorklet exactly once.
  * firstSample is the CU8 source sample index within the current revision. */
 export type DecoderEvent =
+  | { type: "same"; batch: SameBatch }
   | { type: "reset"; protocol: "meteor" }
   | {
       type: "telemetry";
@@ -94,6 +96,7 @@ export type DecoderEvent =
       state: "searching" | "minute" | "confirmed";
     };
 export type WorkerIn =
+  | { type: "same-options"; options: SameOptions }
   | { type: "spectrum-visibility"; enabled: boolean }
   | { type: "meteor-bias"; command: MeteorBiasCommand }
   | { type: "wfm-multiplex"; enabled: boolean }

@@ -5,11 +5,13 @@ export class NfmDecoder {
     free(): void;
     [Symbol.dispose](): void;
     constructor(offset: number, bandwidth: number, deviation: number, squelch: number);
+    process(iq: Uint8Array | number[]): Float32Array;
     /**
      * CU8 2.4 MSPS -> interleaved 48 kHz mono PCM. State survives arbitrary chunks.
      */
-    process(iq: Uint8Array | number[]): Float32Array;
+    set_audio_tap_enabled(enabled: boolean): void;
     status(): string;
+    take_audio_tap(): Float32Array;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -19,7 +21,9 @@ export interface InitOutput {
     readonly __wbg_nfmdecoder_free: (a: number, b: number) => void;
     readonly nfmdecoder_new: (a: number, b: number, c: number, d: number) => number;
     readonly nfmdecoder_process: (a: number, b: number, c: number) => [number, number];
+    readonly nfmdecoder_set_audio_tap_enabled: (a: number, b: number) => void;
     readonly nfmdecoder_status: (a: number) => [number, number];
+    readonly nfmdecoder_take_audio_tap: (a: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

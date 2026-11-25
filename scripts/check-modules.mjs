@@ -9,6 +9,7 @@ const expected = {
   nfm: ["NfmDecoder"],
   ook: ["OokDecoder"],
   armer: ["ArmerTestSource", "Receiver"],
+  same: ["SameDecoder"],
 };
 const sizes = {};
 for (const [name, exports] of Object.entries(expected)) {

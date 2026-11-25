@@ -9,6 +9,8 @@ export class AmDecoder {
      * Normalized F32 I/Q at 240 kSPS from dsp_core.
      */
     process_baseband(iq: Float32Array | number[]): Float32Array;
+    set_audio_tap_enabled(enabled: boolean): void;
+    take_audio_tap(): Float32Array;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -18,6 +20,8 @@ export interface InitOutput {
     readonly __wbg_amdecoder_free: (a: number, b: number) => void;
     readonly amdecoder_new: (a: number, b: number) => number;
     readonly amdecoder_process_baseband: (a: number, b: number, c: number) => [number, number];
+    readonly amdecoder_set_audio_tap_enabled: (a: number, b: number) => void;
+    readonly amdecoder_take_audio_tap: (a: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

@@ -34,6 +34,21 @@ export class AmDecoder {
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v2;
     }
+    /**
+     * @param {boolean} enabled
+     */
+    set_audio_tap_enabled(enabled) {
+        wasm.amdecoder_set_audio_tap_enabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    take_audio_tap() {
+        const ret = wasm.amdecoder_take_audio_tap(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
 }
 if (Symbol.dispose) AmDecoder.prototype[Symbol.dispose] = AmDecoder.prototype.free;
 function __wbg_get_imports() {

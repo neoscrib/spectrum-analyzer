@@ -41,7 +41,9 @@
     "test:browser:meteor": "node scripts/browser-meteor-check.mjs",
     "test:meteor:bounds": "mkdir -p artifacts && cc -O2 -Iwasm/meteor/vendor/meteor_decode wasm/meteor/test_bounds.c wasm/meteor/vendor/meteor_decode/channel.c -o artifacts/meteor-bounds && artifacts/meteor-bounds",
     "test:browser:meteor-bias": "node scripts/browser-meteor-bias-check.mjs",
-    "test:browser:meteor-passes": "node scripts/browser-meteor-passes-check.mjs"
+    "test:browser:meteor-passes": "node scripts/browser-meteor-passes-check.mjs",
+    "test:same": "node scripts/check-same.mjs",
+    "test:browser:same": "node scripts/browser-same-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",

@@ -1,5 +1,6 @@
 import type { Settings } from "./types";
 export interface IqSource {
+  referenceTime?: string;
   format: Settings["replayFormat"];
   sampleRate: number;
   offset: number;

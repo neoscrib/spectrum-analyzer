@@ -4,6 +4,7 @@ import type { Settings } from "../model";
 import type { DecoderEvent } from "../types";
 import type { ArmerPolicy } from "../armer/model";
 import type { NfmMonitorConfig } from "../presets/model";
+import type { SameOptions } from "../same/model";
 
 /** A worker-owned instance, recreated on configuration/revision changes.
  * CU8 inputs remain worker-owned. Output buffers transfer ownership to consumers.
@@ -18,6 +19,8 @@ export interface DecoderPlugin {
   setMultiplexEnabled?(enabled: boolean): void;
   setStereoEnabled?(enabled: boolean): void;
   setRdsEnabled?(enabled: boolean): void;
+  setSameOptions?(options: SameOptions): Promise<void>;
+  finish?(): DecoderEvent[];
 }
 /** These imports are intentionally dynamic: metadata/UI must never pull in a
  * native decoder, its glue, or its protocol dependencies. */

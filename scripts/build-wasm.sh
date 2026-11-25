@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
-for decoder in core wfm am wwv nfm ook armer; do
+for decoder in core wfm am wwv nfm ook armer same; do
   name="$decoder"
   if [[ "$decoder" == core ]]; then name=dsp_core; fi
   cargo build --manifest-path wasm/Cargo.toml --release --target wasm32-unknown-unknown --locked --no-default-features --features "$decoder"

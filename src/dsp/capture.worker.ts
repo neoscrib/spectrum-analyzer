@@ -64,6 +64,11 @@ async function process(data?: ArrayBuffer) {
         );
   if (!result) throw Error("The decoder did not return its input buffer.");
   const iq = new Uint8Array(result.data);
+  for (const event of result.events)
+    if (event.type === "same") {
+      event.batch.source = data ? (input.replay ? "replay" : "live") : "test";
+      if (input.referenceTime) event.batch.referenceTime = input.referenceTime;
+    }
   const count = iq.byteLength / iqStride(input.format);
   samplesProcessed += count;
   let fft: Float32Array | undefined;
@@ -137,6 +142,10 @@ self.onmessage = ({ data }: MessageEvent<WorkerIn>) => {
         case "wfm-stereo":
           settings = { ...settings, stereo: data.enabled };
           await host.request({ type: "wfm-stereo", enabled: data.enabled });
+          break;
+        case "same-options":
+          settings = { ...settings, same: data.options };
+          await host.request(data);
           break;
         case "wfm-rds":
           settings = { ...settings, rds: data.enabled };

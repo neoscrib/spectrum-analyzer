@@ -1,6 +1,6 @@
 # Spectrum
 
-A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and WebAssembly WFM stereo, NFM, AM, OOK/ASK, rtl_433, WWV time-code, ARMER P25 Phase I, and Meteor-M LRPT decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup and TLE refresh are optional network services.
+A browser-based RTL-SDR spectrum analyzer with a WebUSB receiver and WebAssembly WFM stereo, NFM, AM, optional EAS/SAME audio, OOK/ASK, rtl_433, WWV time-code, ARMER P25 Phase I, and Meteor-M LRPT decoders. React, TypeScript, and Vite; reception and decoding run locally. RadioReference alias lookup and TLE refresh are optional network services.
 
 ```sh
 npm ci
@@ -26,6 +26,28 @@ The development server remains at **5176** and does not register a service worke
 For HTTPS hosting, serve the contents of `dist/` at the origin root. Use revalidation/no-cache headers for `sw.js` and `index.html`; hashed assets may be cached immutably. Static hosting supports all local radio features; the optional `/api/tle` and `/api/armer/aliases` endpoints is provided by the Go API. The plugin uses `injectManifest` and `registerType: "prompt"`; its [offline precache configuration](https://vite-pwa-org.netlify.app/guide/service-worker-precache) explicitly includes WASM, nested workers, fonts and public license/source files. Manifest/installation requirements are described by [Chrome's installation guide](https://web.dev/articles/install-criteria), and updates follow the [service worker lifecycle](https://web.dev/articles/service-worker-lifecycle).
 
 `npm run test:browser:pwa` starts its own temporary production server and a disposable, non-incognito Chrome profile. It checks Chrome installability, all decoder files, server-stopped/offline cold starts for every decoder, real AudioWorklet playback, offline IQ recording, browser restart without a server, mobile/desktop layouts, API cache exclusion, deferred updates, multiple-window protection, and retry after a failed decoder download. It never installs into your personal browser profile or accesses USB hardware.
+
+## EAS / SAME emergency alert audio
+
+Enable **Decode EAS/SAME** in the EAS / SAME panel while AM, NFM or WFM is selected.
+One optional, separately loaded WASM audio decoder handles NOAA Weather Radio
+and commercial EAS broadcasts, including raw headers, repeated-header recovery,
+EOM markers, geographic/event filtering and independently observed NOAA/EAS
+attention tones. Normal audio, stereo, RDS and squelch behavior are preserved;
+NFM data is tapped before muting. Historical CU8 IQ replay and bounded PCM WAV
+analysis are available in the same panel.
+
+For the reception example near Mora, Minnesota: **162.425 MHz, NFM, 25 kHz width,
+±5 kHz deviation**; Kanabec County SAME code **027065**. SAME is transmitted during
+applicable alerts/tests rather than continuously. Single headers, repeated
+agreement and recovered messages have distinct labels. Expiration uses issue
+time plus purge; the year is explicitly inferred from the capture reference.
+SAME has no checksum or authentication.
+
+This is an **experimental receiver, not a substitute for a dedicated emergency
+alert radio**. No automatic notifications or unmuting are performed. See
+[the SAME guide](docs/same.md) for protocol details, offline county aliases,
+filtering, file/replay instructions, validation commands and limitations.
 
 ## Docker and GHCR
 
@@ -334,14 +356,16 @@ Every decoder has a separate, lazily instantiated binary; selecting an idle deco
 | Selected decoder | Loaded WASM binaries | Approximate uncompressed bytes |
 | --- | --- | ---: |
 | None | None | 0 |
-| AM | `dsp_core` + `am` | 81 KB |
+| AM | `dsp_core` + `am` | 82 KB |
 | WFM + RDS/RBDS | `dsp_core` + `wfm` | 131 KB |
-| NFM | `nfm` | 126 KB |
+| NFM | `nfm` | 127 KB |
 | OOK/ASK | `dsp_core` + `ook` | 150 KB |
 | WWV | `dsp_core` + `wwv` | 152 KB |
 | ARMER | `armer` | 364 KB |
 | Meteor-M LRPT | `meteor` | 48 KB |
 | rtl_433 | `dsp_core` + `rtl433` | 626 KB |
+
+Enabling EAS/SAME additionally loads the separate `same` module (about 1.27 MB uncompressed / 424 KB gzip), shared by compatible audio receivers in that worker. It is disabled by default.
 
 These are download sizes, not total RAM measurements. Each active instance also has linear memory and runtime state. Browser HTTP/compiled-code caches are browser-managed; terminating a worker does not promise immediate physical RAM release.
 

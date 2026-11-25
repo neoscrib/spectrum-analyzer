@@ -8,8 +8,9 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["core", "wfm", "am", "wwv", "nfm", "ook", "armer"]
+default = ["core", "wfm", "am", "wwv", "nfm", "ook", "armer", "same"]
 core = []
+same = ["dep:sameold", "dep:serde", "dep:serde_json"]
 wfm = ["dep:serde", "dep:serde_json"]
 am = []
 wwv = ["dep:serde", "dep:serde_json"]
@@ -22,6 +23,7 @@ wasm-bindgen = "=0.2.130"
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 p25 = { package = "sdr-p25", version = "=0.1.0", default-features = false, optional = true }
+sameold = { version = "=0.6.0", path = "vendor/sameold", default-features = false, optional = true }
 
 [profile.release]
 opt-level = 3

@@ -16,6 +16,7 @@ export async function inspectCu8Replay(
   if (!file.size || file.size % 2)
     throw Error("CU8 recordings must contain complete I/Q pairs.");
   let center = settings.center;
+  let rate = settings.sampleRate ?? 2400000;
   if (metaFile) {
     if (metaFile.size > 1024 * 1024)
       throw Error("SigMF metadata is too large.");
@@ -28,9 +29,15 @@ export async function inspectCu8Replay(
         : {};
     if (
       global["core:datatype"] !== "cu8" ||
-      global["core:sample_rate"] !== 2400000
+      typeof global["core:sample_rate"] !== "number" ||
+      !Number.isFinite(global["core:sample_rate"]) ||
+      global["core:sample_rate"] < 48000 ||
+      global["core:sample_rate"] > 20000000
     )
-      throw Error("This decoder requires CU8 recordings at 2.4 MSPS.");
+      throw Error(
+        "Choose CU8 recordings with a valid rate from 48 kSPS to 20 MSPS.",
+      );
+    rate = global["core:sample_rate"] as number;
     const captures =
       "captures" in meta && Array.isArray(meta.captures)
         ? (meta.captures as unknown[])
@@ -60,16 +67,26 @@ export async function inspectCu8Replay(
       }
     }
   }
+  if (settings.decoder !== "none" && rate !== 2400000)
+    throw Error(
+      "This decoder requires CU8 recordings at 2.4 MSPS. Use spectrum-only replay for wideband IQ.",
+    );
   return {
     file,
     source: {
       format: "cu8",
-      sampleRate: 2400000,
+      sampleRate: rate,
       offset: 0,
       length: file.size,
       center,
       referenceTime,
     },
-    settings: { ...settings, center },
+    settings: {
+      ...settings,
+      center,
+      sampleRate: rate,
+      span: settings.decoder === "none" ? rate : Math.min(settings.span, rate),
+      ...(settings.decoder === "none" ? { channel: center } : {}),
+    },
   };
 }

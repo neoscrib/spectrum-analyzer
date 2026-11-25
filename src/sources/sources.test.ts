@@ -67,7 +67,7 @@ it("configures HackRF receive requests and converts every signed 8-bit value exa
   expect(new DataView(tune.buffer).getUint32(4, true)).toBe(456789);
   expect(
     commands
-      .filter((c) => c.direction === "in")
+      .filter((c) => c.direction === "in" && [19, 20].includes(c.request))
       .map((c) => [c.request, c.index]),
   ).toEqual([
     [19, 24],
@@ -113,6 +113,38 @@ it("rejects unsupported controls, failed gain requests and short HackRF samples"
     data: new DataView(new ArrayBuffer(2)),
   });
   await expect(source.readSamples(128)).rejects.toThrow(/short block/);
+  await source.close();
+});
+it("identifies HackRF Pro and programs a full 20 MSPS capture and matching wideband filter", async () => {
+  const { device, commands, usb } = hackrf();
+  device.controlTransferIn.mockImplementation(async (s) => {
+    commands.push({ direction: "in", ...s, bytes: new Uint8Array(0) });
+    return {
+      status: "ok",
+      data: new DataView(new Uint8Array([s.request === 14 ? 5 : 1]).buffer),
+    };
+  });
+  const source = await openHackrf(usb, 20000000);
+  expect(source.info).toMatchObject({
+    name: "HackRF Pro",
+    minHz: 100000,
+    sampleRate: 20000000,
+    nativeRate: 20000000,
+  });
+  await source.configure({
+    center: 600e6,
+    gain: 26,
+    ppm: 0,
+    sampleRate: 20000000,
+  });
+  const rate = commands.find((c) => c.request === 6)!.bytes;
+  expect(new DataView(rate.buffer).getUint32(0, true)).toBe(20000000);
+  const filter = commands.find((c) => c.request === 7)!;
+  expect(filter.value + filter.index * 65536).toBe(15000000);
+  expect(commands.some((c) => c.request === 53 && c.value === 0)).toBe(true);
+  await expect(
+    source.configure({ center: 600e6, gain: 26, ppm: 0, sampleRate: 8000000 }),
+  ).rejects.toThrow(/Reconnect/);
   await source.close();
 });
 it("validates actual hardware ranges independently of normalized decoder sample rate", () => {

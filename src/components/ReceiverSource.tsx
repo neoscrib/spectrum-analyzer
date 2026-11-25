@@ -7,7 +7,11 @@ export function ReceiverSource({
   disabled,
   onChange,
   known,
+  rate,
+  onRateChange,
 }: {
+  rate: number;
+  onRateChange: (rate: number) => void;
   known: boolean;
   options: SourceOptions;
   info: ReceiverInfo;
@@ -35,10 +39,38 @@ export function ReceiverSource({
           }}
         >
           <option value="rtl">RTL-SDR · USB</option>
-          <option value="hackrf">HackRF One · USB</option>
+          <option value="hackrf">HackRF One / Pro · USB</option>
           <option value="soapy">SoapySDR · bridge</option>
         </select>
       </label>
+      <label>
+        Capture rate
+        <select
+          aria-label="Capture sample rate"
+          value={rate}
+          disabled={disabled || finding}
+          onChange={(e) => onRateChange(Number(e.target.value))}
+        >
+          {!(info.sampleRates ?? [info.sampleRate]).includes(rate) && (
+            <option value={rate} disabled>
+              {rate / 1e6} MSPS · replay rate; choose a receiver rate before
+              connecting
+            </option>
+          )}
+          {(info.sampleRates ?? [info.sampleRate]).map((value) => (
+            <option key={value} value={value}>
+              {value / 1e6} MSPS
+            </option>
+          ))}
+        </select>
+      </label>
+      {rate !== 2400000 && (
+        <p className="caption">
+          Wideband capture preserves the selected rate for the spectrum and IQ
+          recording. Selecting a higher rate switches incompatible decoders to
+          spectrum-only. Current audio/data decoders require 2.4 MSPS.
+        </p>
+      )}
       {options.kind === "soapy" && (
         <>
           <label>
@@ -148,12 +180,12 @@ export function ReceiverSource({
       )}
       <p className="caption" data-testid="receiver-format">
         {known
-          ? `${info.nativeFormat.toUpperCase()} · ${(info.nativeRate / 1e6).toFixed(3)} MSPS device → CU8 · 2.4 MSPS decoder input.`
-          : "Device capabilities are read when you connect. Bridge output: CU8 at 2.4 MSPS."}
+          ? `${info.nativeFormat.toUpperCase()} · ${(info.nativeRate / 1e6).toFixed(3)} MSPS device → CU8 · ${rate / 1e6} MSPS capture.`
+          : `Device capabilities are read when you connect. Selected capture: CU8 at ${rate / 1e6} MSPS.`}
         {options.kind === "soapy"
           ? " Bridge conversion includes streaming resampling when needed and 8-bit quantization."
           : options.kind === "hackrf"
-            ? " Signed IQ is converted losslessly to unsigned IQ. RX filter: 1.75 MHz; RF amplifier off."
+            ? " Signed IQ is converted losslessly to unsigned IQ. The RX filter follows capture rate; RF amplifier off."
             : " Native IQ passes through unchanged."}
       </p>
     </div>

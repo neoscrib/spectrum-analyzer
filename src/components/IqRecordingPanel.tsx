@@ -1,9 +1,9 @@
 import { Circle, Download, Square } from "lucide-react";
 import { useState } from "react";
 import {
-  BYTE_RATE,
   MEMORY_LIMIT,
   metadataName,
+  recordingRate,
   type RecordingState,
 } from "../recording/model";
 import { canStreamToFolder, downloadBlob } from "../recording/storage";
@@ -18,7 +18,9 @@ export function IqRecordingPanel({
   onStop,
   onClear,
   receiver,
+  sampleRate = 2400000,
 }: {
+  sampleRate?: number;
   receiver?: ReceiverInfo;
   state: RecordingState;
   active: boolean;
@@ -36,6 +38,8 @@ export function IqRecordingPanel({
   const locked =
     preparing || state.phase === "recording" || state.phase === "saving";
   const result = state.phase === "complete" || state.phase === "error";
+  const rate = state.info ? recordingRate(state.info) : sampleRate;
+  const byteRate = rate * 2;
   return (
     <section className="panel iq-panel" aria-label="IQ recording">
       <div className="panel-title">
@@ -49,7 +53,8 @@ export function IqRecordingPanel({
         <span className="chip">CU8</span>
       </div>
       <p className="caption">
-        CU8 at 2.4 MSPS · {size(BYTE_RATE)}/s ({size(BYTE_RATE * 60)}/min).
+        CU8 at {rate / 1e6} MSPS · {size(byteRate)}/s ({size(byteRate * 60)}
+        /min).
         {receiver?.transport === "WebSocket" &&
           " Records bridge output after any resampling and 8-bit conversion; native source details are retained in SigMF metadata."}
       </p>
@@ -76,18 +81,20 @@ export function IqRecordingPanel({
         disabled={locked}
         onChange={(e) => setSeconds(Number(e.target.value))}
       >
-        <option value="2">2 seconds · 9.6 MB</option>
-        <option value="5">5 seconds · 24 MB</option>
-        <option value="10">10 seconds · 48 MB</option>
-        <option value="30">30 seconds · 144 MB</option>
-        <option value="60">1 minute · 288 MB</option>
-        <option value="300">5 minutes · 1.44 GB</option>
+        {[2, 5, 10, 30, 60, 300].map((duration) => (
+          <option key={duration} value={duration}>
+            {duration < 60
+              ? `${duration} seconds`
+              : `${duration / 60} minute${duration > 60 ? "s" : ""}`}{" "}
+            · {size(duration * byteRate)}
+          </option>
+        ))}
         <option value="0">Until stopped</option>
       </select>
       <p className="caption iq-storage-note">
         {mode === "disk"
           ? "Choose a folder once for this capture. IQ and SigMF metadata are saved together when recording finishes."
-          : `Kept in memory until downloaded. Stops at ${size(MEMORY_LIMIT)} (about ${(MEMORY_LIMIT / BYTE_RATE).toFixed(1)} seconds), even if a longer duration is selected.`}
+          : `Kept in memory until downloaded. Stops at ${size(MEMORY_LIMIT)} (about ${(MEMORY_LIMIT / byteRate).toFixed(1)} seconds), even if a longer duration is selected.`}
       </p>
       {state.phase === "recording" ? (
         <button className="button stop-button" onClick={() => void onStop()}>
@@ -131,13 +138,13 @@ export function IqRecordingPanel({
         {state.info && (
           <>
             <span>
-              {state.info.source === "test"
+              {state.info.source === "test" || state.info.receiver?.generated
                 ? "GENERATED TEST IQ"
                 : "Live RF IQ"}{" "}
               · {(state.info.settings.center / 1e6).toFixed(4)} MHz
             </span>
             <span data-testid="iq-recording-size">
-              {(state.bytes / BYTE_RATE).toFixed(3)} s · {size(state.bytes)}
+              {(state.bytes / byteRate).toFixed(3)} s · {size(state.bytes)}
               {state.phase === "recording" || state.phase === "saving"
                 ? ` · ${size(state.queued)} pending`
                 : ""}

@@ -303,7 +303,7 @@ export class RadioSession {
         "WebUSB is unavailable. Use Chrome or Edge, or connect through the SoapySDR bridge.",
       );
     // Keep the chooser in the original user gesture, before initializing WASM/audio.
-    const opening = openSource(options);
+    const opening = openSource(options, settings.sampleRate);
     try {
       this.device = await opening;
       this.onReceiver(this.device.info);
@@ -329,7 +329,10 @@ export class RadioSession {
         ppm: caps.ppm ? settings.ppm : 0,
       };
       validateSourceDecoder(settings, this.device.info);
-      await this.init(settings, monitor);
+      await this.init(settings, monitor, {
+        ...liveInput,
+        sampleRate: this.device.info.sampleRate,
+      });
       await this.device.configure(settings);
       this.onReceiver(this.device.info);
       validateSourceDecoder(settings, this.device.info);
@@ -387,11 +390,14 @@ export class RadioSession {
       throw Error("Stop the current source before replaying IQ.");
     if (
       settings.decoder !== "meteor" &&
-      !["am", "nfm", "wfm", "adsb"].includes(settings.decoder)
+      !["none", "am", "nfm", "wfm", "adsb"].includes(settings.decoder)
     )
-      throw Error("Select Meteor-M, AM, NFM, WFM or ADS-B for IQ replay.");
+      throw Error(
+        "Select Spectrum only, Meteor-M, AM, NFM, WFM or ADS-B for IQ replay.",
+      );
     if (
       settings.decoder !== "meteor" &&
+      settings.decoder !== "none" &&
       (source.format !== "cu8" || source.sampleRate !== SAMPLE_RATE)
     )
       throw Error("This decoder's IQ replay requires CU8 at 2.4 MSPS.");
@@ -439,7 +445,8 @@ export class RadioSession {
         if (!this.running) break;
         await this.replayBlock(data);
         if (this.settings?.decoder !== "meteor") {
-          deadline += ((end - at) / range.stride / SAMPLE_RATE) * 1000;
+          deadline +=
+            ((end - at) / range.stride / this.replayState!.sampleRate) * 1000;
           const wait = deadline - performance.now();
           if (wait > 0)
             await new Promise((resolve) => setTimeout(resolve, wait));
@@ -600,9 +607,11 @@ export class RadioSession {
     }
   }
   private enqueue(data: ArrayBuffer) {
-    if (this.queue.length >= 12) {
+    const rate = this.settings?.sampleRate ?? SAMPLE_RATE;
+    const limit = Math.min(128, Math.ceil((12 * rate) / SAMPLE_RATE));
+    if (this.queue.length >= limit) {
       this.fail(
-        "DSP could not keep up with 2.4 MSPS. Reception stopped to avoid hidden sample gaps. Close busy tabs and reconnect.",
+        `DSP could not keep up with ${rate / 1e6} MSPS. Reception stopped to avoid hidden sample gaps. Close busy tabs and reconnect.`,
       );
       return;
     }

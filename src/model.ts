@@ -19,6 +19,7 @@ import {
   type MeteorOptions,
 } from "./meteor/model";
 export interface Settings {
+  sampleRate: number;
   adsb: AdsbOptions;
   same: SameOptions;
   meteor: MeteorOptions;
@@ -40,6 +41,7 @@ export interface Settings {
   tone: ToneFilter | null;
 }
 export const defaults: Settings = {
+  sampleRate: SAMPLE_RATE,
   adsb: adsbDefaults,
   same: sameDefaults,
   meteor: meteorDefaults,
@@ -61,6 +63,9 @@ export const defaults: Settings = {
   tone: null,
 };
 export function validateSettings(s: Settings): void {
+  const rate = s.sampleRate ?? SAMPLE_RATE;
+  if (!Number.isFinite(rate) || rate < 48000 || rate > 20000000)
+    throw Error("Capture rate must be between 48 kSPS and 20 MSPS.");
   validateAdsb(s.adsb);
   if (
     !s.same ||
@@ -77,14 +82,16 @@ export function validateSettings(s: Settings): void {
     throw Error(
       "Center frequency must be positive and no greater than 100 GHz. Receiver tuning limits are checked when connecting.",
     );
-  if (!Number.isFinite(s.span) || s.span < 25_000 || s.span > SAMPLE_RATE)
-    throw Error("Displayed bandwidth must be between 25 kHz and 2.4 MHz.");
+  if (!Number.isFinite(s.span) || s.span < 25_000 || s.span > rate)
+    throw Error(
+      `Displayed bandwidth must be between 25 kHz and ${rate / 1e6} MHz.`,
+    );
   const manifest = decoders.find((d) => d.id === s.decoder);
   if (!manifest) throw Error("Unknown decoder.");
   if (
     !Number.isFinite(s.bandwidth) ||
     s.bandwidth <= 0 ||
-    s.bandwidth > SAMPLE_RATE
+    (s.decoder !== "none" && s.bandwidth > rate)
   )
     throw Error("Invalid decoder channel bandwidth.");
   if (s.decoder === "adsb" && s.channel !== 1090000000)
@@ -97,12 +104,13 @@ export function validateSettings(s: Settings): void {
     );
   if (
     !Number.isFinite(s.channel) ||
-    Math.abs(s.channel - s.center) +
-      (s.decoder === "armer" ? 24000 : s.bandwidth / 2) >
-      SAMPLE_RATE / 2
+    (s.decoder !== "none" &&
+      Math.abs(s.channel - s.center) +
+        (s.decoder === "armer" ? 24000 : s.bandwidth / 2) >
+        rate / 2)
   )
     throw Error(
-      "Keep the whole decoder channel inside the 2.4 MHz captured band.",
+      `Keep the whole decoder channel inside the ${rate / 1e6} MHz captured band.`,
     );
   if (
     s.gain !== null &&
@@ -143,7 +151,7 @@ export function moveCenter(s: Settings, center: number): Settings {
   };
 }
 export function clampChannel(s: Settings, channel: number): number {
-  const edge = SAMPLE_RATE / 2 - s.bandwidth / 2;
+  const edge = (s.sampleRate ?? SAMPLE_RATE) / 2 - s.bandwidth / 2;
   return (
     Math.round(
       Math.max(s.center - edge, Math.min(s.center + edge, channel)) / 1000,

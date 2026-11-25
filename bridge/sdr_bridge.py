@@ -18,26 +18,27 @@ import numpy as np
 import soxr
 
 OUTPUT_RATE = 2_400_000
+CAPTURE_RATES = [2400000, 4000000, 6000000, 8000000, 10000000, 12000000, 16000000, 20000000]
 BLOCK = 65536
 
 
-def choose_rate(rates, ranges):
+def choose_rate(rates, ranges, target=OUTPUT_RATE):
     candidates = [float(r) for r in rates if 48000 <= r <= 20e6]
     for r in ranges:
         lo, hi = r.minimum(), r.maximum()
-        if lo <= OUTPUT_RATE <= hi:
-            candidates.append(float(OUTPUT_RATE))
-        candidates.extend(v for v in (lo, hi) if 48000 <= v <= 20e6)
+        if lo <= target <= hi:
+            candidates.append(float(target))
+        candidates.extend(v for v in (lo, min(hi, 20e6)) if 48000 <= v <= 20e6)
     if not candidates:
         raise ValueError("The driver reports no supported rate between 48 kSPS and 20 MSPS.")
-    above = [r for r in candidates if r >= OUTPUT_RATE]
+    above = [r for r in candidates if r >= target]
     return min(above) if above else max(candidates)
 
 
 class Converter:
     """One persistent band-limited resampler; phase/history survive read boundaries."""
-    def __init__(self, rate):
-        self.resampler = None if rate == OUTPUT_RATE else soxr.ResampleStream(rate, OUTPUT_RATE, 2, dtype="float32", quality="HQ")
+    def __init__(self, rate, output_rate=OUTPUT_RATE):
+        self.resampler = None if rate == output_rate else soxr.ResampleStream(rate, output_rate, 2, dtype="float32", quality="HQ")
 
     def process(self, iq):
         if iq.dtype != np.float32 or iq.ndim != 2 or iq.shape[1] != 2 or not np.isfinite(iq).all():
@@ -53,6 +54,8 @@ def packet(data, sequence, generation):
 
 
 def settings_checked(s, info):
+    if "sampleRate" in s and s["sampleRate"] != info["sampleRate"]:
+        raise ValueError("Reconnect before changing the capture sample rate.")
     for key in ("center", "ppm"):
         if not isinstance(s.get(key), (int, float)) or not math.isfinite(s[key]):
             raise ValueError("Invalid receiver settings.")
@@ -70,7 +73,7 @@ def settings_checked(s, info):
 
 
 class SoapyReceiver:
-    def __init__(self, args):
+    def __init__(self, args, output_rate=OUTPUT_RATE):
         try:
             import SoapySDR
         except ImportError as error:
@@ -85,13 +88,18 @@ class SoapyReceiver:
         if not ranges:
             raise ValueError("Driver did not report a receive frequency range.")
         gain = self.radio.getGainRange(rx, 0)
-        self.rate = choose_rate(self.radio.listSampleRates(rx, 0), self.radio.getSampleRateRange(rx, 0))
+        rates, rate_ranges = self.radio.listSampleRates(rx, 0), self.radio.getSampleRateRange(rx, 0)
+        self.rate = choose_rate(rates, rate_ranges, output_rate)
+        max_rate = max([r for r in rates if 48000 <= r <= 20e6] + [min(r.maximum(), 20e6) for r in rate_ranges if r.minimum() <= 20e6])
+        if output_rate > OUTPUT_RATE and self.rate < output_rate:
+            raise ValueError(f"This receiver captures at most {max_rate / 1e6:g} MSPS; it cannot provide the requested wideband capture.")
         self.info = {
             "name": self.radio.getHardwareInfo().get("label", self.radio.getHardwareKey()),
             "transport": "WebSocket", "minHz": min(r[0] for r in ranges), "maxHz": max(r[1] for r in ranges), "frequencyRanges": ranges,
             "gain": {"min": gain.minimum(), "max": gain.maximum(), "step": gain.step() or 0.1, "auto": self.radio.hasGainMode(rx, 0)},
             "ppm": bool(getattr(self.radio, "hasFrequencyCorrection", lambda *_: False)(rx, 0)),
-            "nativeRate": self.rate, "nativeFormat": "cf32", "sampleRate": OUTPUT_RATE, "format": "cu8",
+            "nativeRate": self.rate, "nativeFormat": "cf32", "sampleRate": output_rate, "format": "cu8",
+            "maxNativeRate": max_rate, "sampleRates": sorted(set([OUTPUT_RATE] + [r for r in CAPTURE_RATES + list(rates) if 48000 <= r <= max_rate])),
         }
 
     def configure(self, settings):
@@ -115,7 +123,9 @@ class SoapyReceiver:
         result = self.radio.activateStream(self.stream)
         if result < 0:
             raise RuntimeError(f"Could not start receive stream ({result}).")
-        self.read_size = min(BLOCK, max(1024, round(actual * BLOCK / OUTPUT_RATE)))
+        if self.info["sampleRate"] > OUTPUT_RATE and actual < self.info["sampleRate"] * 0.999999:
+            raise ValueError("Actual device rate is too low for the requested wideband capture.")
+        self.read_size = min(BLOCK, max(1024, round(actual * BLOCK / self.info["sampleRate"])))
         self.buffer = np.empty(self.read_size, dtype=np.complex64)
         self.last_read = time.monotonic()
 
@@ -145,11 +155,12 @@ class SoapyReceiver:
 
 class TestReceiver:
     """Explicit synthetic source for protocol/browser checks; never claims live RF."""
-    def __init__(self, _args):
-        self.info = {"name": "GENERATED NFM test source", "transport": "WebSocket", "minHz": 1, "maxHz": 6e9,
+    def __init__(self, _args, output_rate=OUTPUT_RATE):
+        self.info = {"name": "GENERATED NFM test source" if output_rate == OUTPUT_RATE else "GENERATED wideband test source", "transport": "WebSocket", "minHz": 1, "maxHz": 6e9,
                      "frequencyRanges": [[1, 6e9]], "gain": {"min": 0, "max": 100, "step": 1, "auto": True}, "ppm": True,
-                     "nativeRate": OUTPUT_RATE, "nativeFormat": "cf32", "sampleRate": OUTPUT_RATE, "format": "cu8", "generated": True}
-        self.rate = OUTPUT_RATE
+                     "nativeRate": output_rate, "nativeFormat": "cf32", "sampleRate": output_rate, "format": "cu8", "generated": True,
+                     "maxNativeRate": 20000000, "sampleRates": CAPTURE_RATES}
+        self.rate = output_rate
 
     def configure(self, settings):
         settings_checked(settings, self.info)
@@ -162,6 +173,8 @@ class TestReceiver:
         time.sleep(max(0, self.deadline - time.monotonic()))
         t = (np.arange(BLOCK, dtype=np.float64) + self.sample) / self.rate
         self.sample += BLOCK
+        if self.rate > OUTPUT_RATE:
+            return (0.3 * np.column_stack((np.cos(2*np.pi*self.rate*0.3*t), np.sin(2*np.pi*self.rate*0.3*t))) + 0.2 * np.column_stack((np.cos(-2*np.pi*self.rate*0.3*t), np.sin(-2*np.pi*self.rate*0.3*t)))).astype(np.float32)
         phase = 2 * np.pi * self.offset * t - 2.5 * np.cos(2 * np.pi * 1000 * t)
         return (np.column_stack((np.cos(phase), np.sin(phase))) * 0.3).astype(np.float32)
 
@@ -184,7 +197,7 @@ class Session:
             self.task = None
 
     async def produce(self):
-        converter = Converter(self.receiver.rate)
+        converter = Converter(self.receiver.rate, self.receiver.info["sampleRate"])
         sequence = 0
         pending = bytearray()
         try:
@@ -238,7 +251,10 @@ async def serve_client(socket, *, factory, exclusive, token, synthetic):
                     args = request.get("args", "")
                     if not isinstance(args, str) or len(args) > 1024:
                         raise ValueError("Invalid device arguments.")
-                    session.receiver = await asyncio.to_thread(factory, args)
+                    rate = request.get("sampleRate", OUTPUT_RATE)
+                    if not isinstance(rate, (int, float)) or not math.isfinite(rate) or not 48000 <= rate <= 20e6:
+                        raise ValueError("Capture rate must be between 48 kSPS and 20 MSPS.")
+                    session.receiver = await asyncio.to_thread(factory, args, rate)
                     result = session.receiver.info
                 elif kind == "configure":
                     if not session.receiver:

@@ -1,5 +1,9 @@
 import type { Settings } from "../model";
+import { compatibility, decoders } from "../decoders";
 export type SourceKind = "rtl" | "hackrf" | "soapy";
+export const CAPTURE_RATES = [
+  2400000, 4000000, 6000000, 8000000, 10000000, 12000000, 16000000, 20000000,
+];
 export interface SourceOptions {
   kind: SourceKind;
   url: string;
@@ -19,14 +23,17 @@ export interface ReceiverInfo {
   sampleRate: number;
   format: "cu8";
   generated?: boolean;
+  sampleRates?: number[];
+  maxNativeRate?: number;
 }
 export interface ReceiverSettings {
   center: number;
   gain: number | null;
   ppm: number;
+  sampleRate?: number;
 }
-/** Sources deliver continuous, ordered CU8 at the decoder rate. Native format
- * and rate remain explicit; conversion happens inside each source adapter. */
+/** Sources deliver continuous, ordered CU8 at the selected capture rate.
+ * Decoder compatibility is checked separately; wideband IQ is never silently narrowed. */
 export interface RadioSource {
   info: ReceiverInfo;
   configure(settings: ReceiverSettings): Promise<void>;
@@ -72,9 +79,20 @@ export function sourceDefaults(kind: SourceKind): ReceiverInfo {
     nativeFormat: kind === "hackrf" ? "cs8" : kind === "rtl" ? "cu8" : "cf32",
     sampleRate: 2400000,
     format: "cu8",
+    sampleRates: kind === "rtl" ? [2400000] : [...CAPTURE_RATES],
+    maxNativeRate: kind === "rtl" ? 2400000 : 20000000,
   };
 }
 export function validateReceiver(s: ReceiverSettings, info: ReceiverInfo) {
+  if (
+    s.sampleRate !== undefined &&
+    !(info.sampleRates ?? [info.sampleRate]).includes(s.sampleRate)
+  )
+    throw Error(
+      `${info.name} does not support a ${s.sampleRate / 1e6} MSPS capture. Choose an advertised capture rate.`,
+    );
+  if (s.sampleRate !== undefined && s.sampleRate !== info.sampleRate)
+    throw Error("Reconnect before changing the capture sample rate.");
   const ranges = info.frequencyRanges ?? [[info.minHz, info.maxHz]];
   if (!ranges.some(([min, max]) => s.center >= min && s.center <= max))
     throw Error(`Frequency is outside ${info.name}'s tuning range.`);
@@ -93,18 +111,23 @@ export function validateReceiver(s: ReceiverSettings, info: ReceiverInfo) {
 }
 export function validateSourceDecoder(s: Settings, info: ReceiverInfo) {
   validateReceiver(s, info);
+  if (s.sampleRate !== info.sampleRate)
+    throw Error(
+      "Receiver sample rate does not match the selected capture rate.",
+    );
   // Resampling does not create capture bandwidth. Restrict the selected channel
   // to the native sampled band even when it is upsampled for a fixed-rate decoder.
   const available = Math.min(info.nativeRate, info.sampleRate);
+  const manifest = decoders.find((d) => d.id === s.decoder);
+  const problem =
+    manifest &&
+    compatibility(manifest, { ...info, availableSampleRate: available });
+  if (problem) throw Error(`${manifest!.name}: ${problem}`);
   if (
     s.decoder !== "none" &&
     Math.abs(s.channel - s.center) + s.bandwidth / 2 > available / 2
   )
     throw Error(
       `Keep the decoder channel inside ${info.name}'s ${(available / 1e6).toFixed(3)} MHz capture.`,
-    );
-  if ((s.decoder === "armer" || s.decoder === "adsb") && available < 2400000)
-    throw Error(
-      `${s.decoder.toUpperCase()} currently requires a source with at least 2.4 MSPS.`,
     );
 }

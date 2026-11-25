@@ -10,7 +10,7 @@ samples pass through spectrumsdr.com's servers.
 | Radio family | Connection |
 | --- | --- |
 | RTL2832U with R820T/R828D (including Blog V3/V4 and common Nooelec devices) | Direct WebUSB in Chrome/Edge; SoapySDR is optional |
-| HackRF One / compatible HackRF One firmware | Direct WebUSB in Chrome/Edge; SoapySDR is optional |
+| HackRF One / HackRF Pro (standard 8-bit mode) | Direct WebUSB in Chrome/Edge; SoapySDR is optional |
 | Airspy R2 / Mini | [SoapyAirspy](https://github.com/pothosware/SoapyAirspy) + libairspy |
 | Airspy HF+ / Discovery | [SoapyAirspyHF](https://github.com/pothosware/SoapyAirspyHF) + libairspyhf |
 | SDRplay RSP family | [SoapySDRPlay3](https://github.com/pothosware/SoapySDRPlay3) + the vendor's SDRplay API |
@@ -79,29 +79,53 @@ the token with source preferences. The helper never opens transmit streams.
 
 ## Sample contract and limits
 
-All current live decoders receive continuous **CU8 at 2,400,000 complex
-samples/s**. RTL-SDR passes through unchanged. HackRF's signed 8-bit pairs are
-converted exactly to unsigned pairs; it uses 2.4 MSPS, the 1.75 MHz receive
-filter, LNA/VGA gain, and no RF amplifier or antenna power. HackRF AGC and PPM
-controls are unavailable in this adapter. Blog V4 branding enables its
-500 kHz–1766 MHz tuning range; the existing driver performs its HF conversion.
+Choose **Capture rate** while the receiver is stopped. RTL-SDR retains its
+stable 2.4 MSPS setting. HackRF One/Pro offer 2.4, 4, 6, 8, 10, 12, 16 and
+20 MSPS. The SoapySDR bridge advertises rates supported by its driver and
+conversion path. Wideband selection switches an incompatible decoder to
+**None · spectrum only**; the UI explains each decoder's rate requirements.
+The current audio, rtl_433, OOK, ARMER and ADS-B engines use 2.4 MSPS; Meteor
+supports its existing replay rates up to 2.4 MSPS. Higher-rate capture does not
+silently run these decoders on an incorrectly labeled stream.
 
-The bridge asks SoapySDR for CF32, chooses the lowest supported rate at or
-above 2.4 MSPS (or the highest lower rate), then reads back the actual rate.
-It supports native rates from 48 kSPS to 20 MSPS. A persistent
+**Spectrum and IQ recording retain the selected capture rate, up to 20 MSPS.**
+The FFT axis uses that actual rate, display span can cover the full captured
+band, and recording duration, sizes, filenames and SigMF use the same sample
+clock. At 20 MSPS, CU8 produces **40 MB/s (2.4 GB/min)**; folder streaming avoids
+the 64 MiB download-mode limit. **Spectrum IQ replay** accepts CU8/SigMF files
+at their recorded rate. Data queues remain bounded and an overload stops
+reception instead of silently losing samples.
+
+RTL-SDR passes through unchanged. HackRF's signed 8-bit pairs are converted
+exactly to unsigned pairs; its sample-clock command and receive filter follow
+the selected rate (15 MHz filter at 20 MSPS). Board identity distinguishes
+HackRF Pro, enables its 100 kHz tuning floor, and disables its narrowband
+receive filter. This adapter uses ordinary 8-bit I/Q, rather than Pro's
+extended-precision or packed half-precision FPGA modes. RF amplifier and
+antenna power remain off. HackRF AGC and PPM controls are unavailable.
+Blog V4 branding enables its 500 kHz–1766 MHz range; the existing driver
+performs its HF conversion.
+
+The bridge asks SoapySDR for CF32 at a native rate at or above the requested
+capture rate, then reads back the actual rate. When required, a persistent
 [SoXR streaming resampler](https://python-soxr.readthedocs.io/en/stable/soxr.html)
-preserves filter state and sample phase across blocks and applies an anti-alias
-filter when downsampling. Output is quantized to 8 bits for the current decoder
-engines. **This first implementation does not preserve a high-bit-depth
-receiver's full ADC dynamic range.** The receiver panel and recording metadata
-identify that conversion.
+converts to the **requested rate**, not a fixed 2.4 MSPS. Upsampling narrow
+hardware to the default 2.4 MSPS remains available for the existing decoders;
+requests for higher wideband capture are rejected if the hardware cannot
+supply that bandwidth. Device overruns and non-finite input are errors.
+Output remains quantized to 8 bits; **higher ADC precision is not preserved
+in this initial implementation**. Native format/rate and conversion details
+remain visible and are retained in the optional `spectrum:receiver` SigMF
+extension. Antenna power follows the native driver's settings and is not
+controlled by the bridge.
 
-Upsampling never creates additional RF bandwidth. Channels must fit inside
-the native sampled band; ARMER and ADS-B currently require at least 2.4 MSPS
-from the source. Spectrum coordinates refer to the normalized 2.4 MSPS stream.
-IQ recordings save that normalized CU8 stream, including `spectrum:receiver`
-native rate/format and hardware identity in SigMF. Hardware timestamps are not
-propagated; timestamps remain approximate host receipt time.
+This is groundwork for a future wideband decoder such as ATSC 1.0, whose
+[A/53 transmission standard](https://www.atsc.org/atsc-documents/a53-atsc-digital-television-standard/)
+uses a 6 MHz channel. **ATSC demodulation, transport stream decoding and media
+playback remain future work.** A decoder module can declare a wideband rate
+requirement and receive the full-rate stream without the old conversion limit.
+Hardware timestamps are not propagated; timestamps remain approximate host
+receipt time.
 
 The bridge sends fixed 65,536-sample blocks with a sequence and retune
 generation. Device overruns, abrupt endings, sequence gaps and full browser
@@ -119,7 +143,7 @@ counters still cannot prove that every ADC sample reached the host.
 npm run test:browser:sources
 ```
 
-`--test-signal` opens no hardware. Its NFM signal is explicitly identified as
+`--test-signal` opens no hardware. Its NFM signal (or two widely separated tones at higher rates) is explicitly identified as
 GENERATED in the UI, filename, and recording metadata. Browser checks exercise
 actual networking, capture/decoder workers, WASM audio, retuning, recording,
 reconnection and mobile layout, plus a simulated HackRF WebUSB device.
@@ -128,3 +152,5 @@ The expanded RTL USB chooser IDs come from the
 [Osmocom device table](https://github.com/osmocom/rtl-sdr/blob/master/src/librtlsdr.c).
 HackRF requests follow the
 [official libhackrf protocol](https://github.com/greatscottgadgets/hackrf/blob/main/host/libhackrf/src/hackrf.c).
+
+`npm run test:browser:high-rate` checks simulated HackRF Pro at 20 MSPS, tones at ±6 MHz, an 80 MB / two-second recording, full-rate replay, and the actual local WebSocket bridge at 20 MSPS. It uses generated IQ and does not claim physical HackRF Pro validation.

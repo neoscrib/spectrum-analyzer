@@ -183,7 +183,19 @@ function checkedInfo(info: ReceiverInfo): ReceiverInfo {
     typeof info.name !== "string" ||
     info.name.length > 160 ||
     info.format !== "cu8" ||
-    info.sampleRate !== 2400000 ||
+    !Number.isFinite(info.sampleRate) ||
+    info.sampleRate < 48000 ||
+    info.sampleRate > 20000000 ||
+    (info.sampleRates !== undefined &&
+      (!Array.isArray(info.sampleRates) ||
+        info.sampleRates.length > 100 ||
+        !info.sampleRates.every(
+          (rate) => Number.isFinite(rate) && rate >= 48000 && rate <= 20000000,
+        ))) ||
+    (info.maxNativeRate !== undefined &&
+      (!Number.isFinite(info.maxNativeRate) ||
+        info.maxNativeRate < 48000 ||
+        info.maxNativeRate > 20000000)) ||
     !Number.isFinite(info.nativeRate) ||
     info.nativeRate < 48000 ||
     info.nativeRate > 20e6 ||
@@ -214,7 +226,10 @@ function checkedInfo(info: ReceiverInfo): ReceiverInfo {
     throw Error("SDR bridge returned incompatible receiver capabilities.");
   return { ...info, transport: "WebSocket" };
 }
-export async function openBridge(options: SourceOptions): Promise<RadioSource> {
+export async function openBridge(
+  options: SourceOptions,
+  sampleRate = 2400000,
+): Promise<RadioSource> {
   const connection = new BridgeConnection(options);
   try {
     const source: RadioSource = {
@@ -222,6 +237,7 @@ export async function openBridge(options: SourceOptions): Promise<RadioSource> {
         await connection.request("open", {
           args: options.args,
           token: options.token ?? "",
+          sampleRate,
         }),
       ),
       async configure(s) {

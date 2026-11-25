@@ -1,5 +1,5 @@
 import {
-  BYTE_RATE,
+  recordingRate,
   MEMORY_LIMIT,
   QUEUE_LIMIT,
   captureMetadata,
@@ -30,7 +30,7 @@ export class IqRecorder {
         "Recording duration must be 0–3600 seconds (0 means until stopped).",
       );
     this.maxBytes = seconds
-      ? Math.floor((seconds * BYTE_RATE) / 2) * 2
+      ? Math.floor(seconds * recordingRate(info)) * 2
       : Infinity;
     this.state = {
       phase: "recording",

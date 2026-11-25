@@ -3,6 +3,7 @@ import { sourceDefaults, validateReceiver, type RadioSource } from "./model";
 // RF amplifier, or antenna-power commands can be enabled by this adapter.
 export async function openHackrf(
   usb: USB = navigator.usb,
+  sampleRate = 2400000,
 ): Promise<RadioSource> {
   const device = await usb.requestDevice({
     filters: [{ vendorId: 0x1d50, productId: 0x6089 }],
@@ -67,17 +68,43 @@ export async function openHackrf(
     await out(17, 0); // RF amplifier off.
     await out(23, 0); // Antenna power off.
     const info = sourceDefaults("hackrf");
+    if (!info.sampleRates!.includes(sampleRate))
+      throw Error("Choose a supported HackRF capture rate up to 20 MSPS.");
     info.name = device.productName || "HackRF One";
+    const board = await device.controlTransferIn(
+      {
+        requestType: "vendor",
+        recipient: "device",
+        request: 14,
+        value: 0,
+        index: 0,
+      },
+      1,
+    );
+    if (board.status !== "ok" || board.data?.byteLength !== 1)
+      throw Error("Could not read the HackRF board identity.");
+    const pro = board.data.getUint8(0) === 5;
+    if (pro) {
+      info.name = "HackRF Pro";
+      info.minHz = 100000;
+    }
+    info.sampleRate = info.nativeRate = sampleRate;
     return {
       info,
       async configure(s) {
         validateReceiver(s, info);
         if (started) await out(1, 0);
         const data = new DataView(new ArrayBuffer(8));
-        data.setUint32(0, 2400000, true);
+        data.setUint32(0, sampleRate, true);
         data.setUint32(4, 1, true);
         await out(6, 0, 0, data.buffer);
-        await out(7, 1750000 & 65535, 1750000 >>> 16);
+        const filters = [
+          1750000, 2500000, 3500000, 5000000, 5500000, 6000000, 7000000,
+          8000000, 9000000, 10000000, 12000000, 14000000, 15000000,
+        ];
+        const bandwidth = filters.filter((n) => n <= sampleRate * 0.75).at(-1)!;
+        await out(7, bandwidth & 65535, bandwidth >>> 16);
+        if (pro) await out(53, 0);
         data.setUint32(0, Math.floor(s.center / 1e6), true);
         data.setUint32(4, Math.round(s.center % 1e6), true);
         await out(16, 0, 0, data.buffer);

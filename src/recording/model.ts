@@ -3,6 +3,8 @@ import type { ReceiverInfo } from "../sources/model";
 export const BYTE_RATE = SAMPLE_RATE * 2;
 export const MEMORY_LIMIT = 64 * 1024 * 1024;
 export const QUEUE_LIMIT = 16 * 1024 * 1024;
+export const recordingRate = (info: CaptureInfo) =>
+  info.receiver?.sampleRate ?? info.settings.sampleRate ?? SAMPLE_RATE;
 export interface CaptureInfo {
   filename: string;
   source: "live" | "test";
@@ -37,7 +39,7 @@ export function captureName(
   source: "live" | "test",
   date = new Date(),
 ): string {
-  return `spectrum-${source === "test" ? "GENERATED-" : ""}${(settings.center / 1e6).toFixed(6)}M-2400k-${date.toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.cu8`;
+  return `spectrum-${source === "test" ? "GENERATED-" : ""}${(settings.center / 1e6).toFixed(6)}M-${(settings.sampleRate ?? SAMPLE_RATE) / 1000}k-${date.toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.cu8`;
 }
 export function metadataName(filename: string): string {
   return filename.replace(/\.cu8$/i, "") + ".sigmf-meta";
@@ -69,7 +71,7 @@ export function captureMetadata(
                   : {}),
               }
             : {}),
-          "core:sample_rate": SAMPLE_RATE,
+          "core:sample_rate": recordingRate(info),
           "core:version": "1.2.6",
           "core:dataset": info.filename,
           "core:recorder": "Spectrum browser SDR",
@@ -79,7 +81,7 @@ export function captureMetadata(
               : info.receiver
                 ? `Live ${info.receiver.name} ${info.receiver.transport} IQ; native ${info.receiver.nativeFormat} at ${info.receiver.nativeRate} samples/s.`
                 : "Live RTL-SDR WebUSB IQ.",
-            `${info.receiver?.transport === "WebSocket" ? "Bridge output after streaming sample-rate conversion when needed and 8-bit quantization" : "Full capture before decoder channel filtering"}; I then Q, unsigned 8-bit, zero near 127.5. ${bytes} bytes; ${samples} complex samples; ${(bytes / BYTE_RATE).toFixed(6)} seconds.`,
+            `${info.receiver?.transport === "WebSocket" ? "Bridge output after streaming sample-rate conversion when needed and 8-bit quantization" : "Full capture before decoder channel filtering"}; I then Q, unsigned 8-bit, zero near 127.5. ${bytes} bytes; ${samples} complex samples; ${(samples / recordingRate(info)).toFixed(6)} seconds.`,
             `Requested tuner gain: ${s.gain === null ? "auto" : s.gain + " dB"}; PPM correction: ${s.ppm}. ${info.receiver?.transport === "WebSocket" ? "Antenna power follows the native driver's settings; not controlled by the bridge." : "Bias tee off."}`,
             `Selected decoder: ${s.decoder}; channel: ${s.channel} Hz; decoder bandwidth: ${s.bandwidth} Hz (not applied to recorded IQ).`,
             `Capture ended: ${reason}. Timestamp is approximate host receipt time of the first recorded block, not a hardware clock. Sample continuity is not hardware timestamp-verified.`,

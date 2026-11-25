@@ -11,9 +11,9 @@ Open **http://localhost:5176** in Chrome or Edge on the computer with your RTL-S
 
 ## Radio sources
 
-Select the radio in **Receiver → Radio source**. RTL-SDR and HackRF One connect directly through WebUSB. The optional local SoapySDR bridge adds Airspy R2/Mini/HF+, SDRplay RSP, LimeSDR, bladeRF, USRP, PlutoSDR and other installed receive drivers. Device capabilities govern tuning, gain and decoder compatibility. See the [bridge and hardware guide](bridge/README.md) for installation, TLS, driver requirements and validation limits.
+Select the radio in **Receiver → Radio source**. RTL-SDR and HackRF One/Pro connect directly through WebUSB. The optional local SoapySDR bridge adds Airspy R2/Mini/HF+, SDRplay RSP, LimeSDR, bladeRF, USRP, PlutoSDR and other installed receive drivers. Device capabilities govern tuning, gain and decoder compatibility. See the [bridge and hardware guide](bridge/README.md) for installation, TLS, driver requirements and validation limits.
 
-Live decoder input remains CU8 at 2.4 MSPS. Bridge sources are resampled when needed and converted to 8-bit IQ; their native rate/format are displayed and retained in recording metadata. High-bit-depth ADC precision is not preserved in this initial implementation.
+Capture rates up to **20 MSPS** are available on compatible sources. Spectrum display, full-rate IQ recording and spectrum replay use the selected sample rate; existing fixed-rate decoders retain their compatibility limits. A future ATSC decoder can receive the wideband stream. Bridge sources are resampled to the requested rate when needed and converted to 8-bit IQ; native rate/format are displayed and retained in recording metadata. High-bit-depth ADC precision is not preserved in this initial implementation.
 
 ## Install and use offline
 

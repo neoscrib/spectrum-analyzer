@@ -49,7 +49,8 @@
     "test:browser:adsb": "node scripts/browser-adsb-check.mjs",
     "test:browser:meteor-doppler": "node scripts/browser-meteor-doppler-check.mjs",
     "test:browser:sources": "node scripts/browser-sources-check.mjs",
-    "test:bridge": "python3 -m unittest discover -s bridge -v"
+    "test:bridge": "python3 -m unittest discover -s bridge -v",
+    "test:browser:high-rate": "node scripts/browser-high-rate-check.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.3.0",

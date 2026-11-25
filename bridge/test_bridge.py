@@ -25,6 +25,13 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(choose_rate([192000, 768000], []), 768000)
         self.assertEqual(choose_rate([], [Range(1e6, 10e6)]), OUTPUT_RATE)
         with self.assertRaises(ValueError): choose_rate([30e6], [])
+        self.assertEqual(choose_rate([6e6, 10e6], [], 8e6), 10e6)
+
+    def test_full_rate_capture_does_not_reduce_to_2_4_msps(self):
+        converter = Converter(20000000, 20000000)
+        self.assertIsNone(converter.resampler)
+        iq = np.zeros((65536, 2), dtype=np.float32)
+        self.assertEqual(len(converter.process(iq)), 65536 * 2)
 
     def test_streaming_conversion_is_independent_of_chunk_boundaries(self):
         rate = 6e6
@@ -123,6 +130,18 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             await socket.send(json.dumps({"id": 2, "type": "close"}))
             self.assertEqual(json.loads(await socket.recv())["id"], 2)
             self.assertFalse(self.lock.locked())
+
+    async def test_wideband_open_and_stream_preserves_requested_rate(self):
+        from websockets.asyncio.client import connect
+        async with connect(self.url, origin="http://localhost:5176") as socket:
+            await socket.send(json.dumps({"id": 1, "type": "open", "token": "test-token", "sampleRate": 20000000}))
+            info = json.loads(await socket.recv())["result"]
+            self.assertEqual(info["nativeRate"], 20000000)
+            self.assertEqual(info["sampleRate"], 20000000)
+            await socket.send(json.dumps({"id": 2, "type": "configure", "center": 600e6, "gain": 25, "ppm": 0, "sampleRate": 20000000}))
+            await socket.recv()
+            frame = await asyncio.wait_for(socket.recv(), 2)
+            self.assertEqual(struct.unpack("<4sIII", frame[:16]), (b"SIQ1", 0, BLOCK, 1))
 
     async def test_auth_exclusive_use_retuning_and_cleanup(self):
         from websockets.asyncio.client import connect

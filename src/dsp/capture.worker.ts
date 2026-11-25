@@ -55,7 +55,7 @@ async function process(data?: ArrayBuffer) {
   // Transfer to the decoder and back; never clone the high-rate CU8 stream.
   if (!data) await configuring; // Test-source generation lives in the decoder.
   const result =
-    data && !host.ready
+    data && (settings.decoder === "none" || !host.ready)
       ? { data, events: [] }
       : await host.request(
           data

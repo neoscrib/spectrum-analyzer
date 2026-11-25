@@ -18,6 +18,7 @@ export interface DecoderManifest {
     minSampleRate: number;
     bandwidthHz: number;
     inputSampleRate?: number;
+    maxSampleRate?: number;
   };
   outputs: (
     "audio" | "telemetry" | "timecode" | "sync" | "message" | "image"
@@ -110,7 +111,11 @@ export const decoders: DecoderManifest[] = [
     id: "meteor",
     name: "Meteor-M · LRPT satellite",
     description: "QPSK / OQPSK · LRPT frames + six image channels",
-    requirements: { minSampleRate: 180000, bandwidthHz: 180000 },
+    requirements: {
+      minSampleRate: 180000,
+      maxSampleRate: 2400000,
+      bandwidthHz: 180000,
+    },
     outputs: ["image", "telemetry"],
     bandwidths: [180000],
   },
@@ -151,6 +156,11 @@ export function compatibility(
   } = receiverCapabilities,
 ): string | null {
   const available = receiver.availableSampleRate ?? receiver.sampleRate;
+  if (
+    manifest.requirements.maxSampleRate &&
+    receiver.sampleRate > manifest.requirements.maxSampleRate
+  )
+    return `This decoder supports capture rates up to ${manifest.requirements.maxSampleRate / 1e6} MSPS.`;
   if (manifest.requirements.minSampleRate > available)
     return `Needs ${(manifest.requirements.minSampleRate / 1e6).toFixed(1)} MSPS; this receiver captures ${(available / 1e6).toFixed(3)} MSPS.`;
   if (manifest.requirements.bandwidthHz > available)

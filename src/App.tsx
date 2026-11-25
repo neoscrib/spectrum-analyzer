@@ -93,6 +93,7 @@ import {
 } from "./model";
 import { RadioSession } from "./radio";
 import { ReceiverSource } from "./components/ReceiverSource";
+import { SpectrumReplay } from "./components/SpectrumReplay";
 import {
   readSourceOptions,
   sourceDefaults,
@@ -267,10 +268,44 @@ export default function App() {
               Math.min(caps.gain.max, settings.gain ?? 24),
             );
       const ppm = caps.ppm ? settings.ppm : 0;
-      setSettings((s) => ({ ...s, gain, ppm }));
+      setSettings((s) => ({
+        ...s,
+        gain,
+        ppm,
+        sampleRate: SAMPLE_RATE,
+        span: Math.min(s.span, SAMPLE_RATE),
+      }));
       setRfDraft({ gain: gain ?? 24, auto: gain === null, ppm: String(ppm) });
     }
     setSourceOptions(next);
+  }
+  function chooseCaptureRate(sampleRate: number) {
+    if (active || busy) return;
+    setReplayView(null);
+    setReplay(null);
+    fft.current = null;
+    setMetrics(emptyMetrics);
+    setSettings((s) => {
+      const manifest = decoders.find((d) => d.id === s.decoder)!;
+      const incompatible = compatibility(manifest, {
+        ...receiver,
+        sampleRate,
+        availableSampleRate: Math.min(
+          sampleRate,
+          receiver.maxNativeRate ?? receiver.nativeRate,
+        ),
+      });
+      return {
+        ...s,
+        sampleRate,
+        span: sampleRate,
+        decoder: incompatible ? "none" : s.decoder,
+        channel:
+          Math.abs(s.channel - s.center) > sampleRate / 2
+            ? s.center
+            : s.channel,
+      };
+    });
   }
   const recordLocked =
     recordPreparing ||
@@ -910,8 +945,8 @@ export default function App() {
         Math.max(
           25000,
           Math.min(
-            replayView?.sampleRate ?? SAMPLE_RATE,
-            Math.min(s.span, replayView?.sampleRate ?? SAMPLE_RATE) * factor,
+            replayView?.sampleRate ?? s.sampleRate,
+            Math.min(s.span, replayView?.sampleRate ?? s.sampleRate) * factor,
           ),
         ),
       ),
@@ -922,7 +957,7 @@ export default function App() {
   const monitoredPreset = appliedMonitor?.presets.find(
     (p) => p.id === nfmFeed.status?.selectedId,
   );
-  const inputRate = replayView?.sampleRate ?? SAMPLE_RATE;
+  const inputRate = replayView?.sampleRate ?? settings.sampleRate;
   const displaySettings = replayView
     ? { ...replayView.settings, span: Math.min(settings.span, inputRate) }
     : monitoredPreset
@@ -1009,7 +1044,7 @@ export default function App() {
               <h2>Three independent controls</h2>
               <p>
                 <strong>Center frequency</strong> tunes the hardware.{" "}
-                <strong>Display span</strong> zooms within its 2.4 MHz capture.{" "}
+                <strong>Display span</strong> zooms within the captured band.{" "}
                 <strong>Decoder frequency</strong> selects a channel in that
                 capture. Click the spectrum or use the frequency field. WFM
                 automatically decodes stereo when a stable pilot is present,
@@ -1079,6 +1114,13 @@ export default function App() {
                     >
                       {[
                         ...new Set([
+                          20000000,
+                          16000000,
+                          12000000,
+                          10000000,
+                          8000000,
+                          6000000,
+                          4000000,
                           SAMPLE_RATE,
                           1200000,
                           600000,
@@ -1371,18 +1413,20 @@ export default function App() {
                 </div>
               </div>
               <ReceiverSource
-                known={!!receiverInfo || sourceOptions.kind !== "soapy"}
+                rate={settings.sampleRate}
+                onRateChange={chooseCaptureRate}
+                known={
+                  (!!receiverInfo &&
+                    receiverInfo.sampleRate === settings.sampleRate) ||
+                  sourceOptions.kind === "rtl"
+                }
                 options={sourceOptions}
                 info={receiver}
                 disabled={active || busy}
                 onChange={chooseSource}
               />
               <div className="capture-row">
-                <span>
-                  {sourceOptions.kind === "soapy"
-                    ? "Decoder input"
-                    : "Capture rate"}
-                </span>
+                <span>Stream rate</span>
                 <strong>
                   {(inputRate / 1e6).toFixed(inputRate === SAMPLE_RATE ? 1 : 4)}{" "}
                   <small>MSPS</small>
@@ -1391,7 +1435,7 @@ export default function App() {
               <p className="caption">
                 {replayView
                   ? "Recorded sample rate."
-                  : "Decoder input rate; device rate is shown above."}{" "}
+                  : "Actual stream rate; device rate is shown above."}{" "}
                 Display span and decoder bandwidth are independent.
               </p>
               {active ? (
@@ -1425,7 +1469,7 @@ export default function App() {
                   </button>
                   <button
                     className="button test-button"
-                    disabled={busy}
+                    disabled={busy || settings.sampleRate !== SAMPLE_RATE}
                     onClick={() => void start("test")}
                   >
                     <FlaskConical size={15} />{" "}
@@ -1511,18 +1555,20 @@ export default function App() {
                       disabled={
                         !!compatibility(d, {
                           ...receiver,
+                          sampleRate: settings.sampleRate,
                           availableSampleRate: Math.min(
-                            receiver.nativeRate,
-                            receiver.sampleRate,
+                            receiver.maxNativeRate ?? receiver.nativeRate,
+                            settings.sampleRate,
                           ),
                         })
                       }
                       title={
                         compatibility(d, {
                           ...receiver,
+                          sampleRate: settings.sampleRate,
                           availableSampleRate: Math.min(
-                            receiver.nativeRate,
-                            receiver.sampleRate,
+                            receiver.maxNativeRate ?? receiver.nativeRate,
+                            settings.sampleRate,
                           ),
                         }) ?? undefined
                       }
@@ -2069,6 +2115,7 @@ export default function App() {
             </section>
 
             <IqRecordingPanel
+              sampleRate={settings.sampleRate}
               receiver={receiver}
               state={recording}
               active={active && source !== "replay"}
@@ -2078,6 +2125,16 @@ export default function App() {
               onStop={() => radio.current!.stopRecording()}
               onClear={() => radio.current!.clearRecording()}
             />
+            {settings.decoder === "none" && (
+              <SpectrumReplay
+                settings={settings}
+                active={active}
+                busy={busy}
+                replay={replay}
+                onReplay={startIqReplay}
+                onStop={stop}
+              />
+            )}
           </aside>
 
           <PresetPanel
@@ -2183,7 +2240,7 @@ export default function App() {
           <span>
             Power is relative dBFS, not calibrated dBm.{" "}
             <span className="footer-divider">/</span> {AUDIO_RATE / 1000} kHz
-            audio · {((FFT_SIZE / SAMPLE_RATE) * 1000).toFixed(2)} ms FFT window
+            audio · {((FFT_SIZE / inputRate) * 1000).toFixed(2)} ms FFT window
           </span>
         </footer>
       </main>
